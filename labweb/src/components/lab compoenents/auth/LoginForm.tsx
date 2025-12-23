@@ -31,7 +31,7 @@ const LoginForm = ({ onLogin, onShowSignup }: LoginFormProps) => {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch("/api/lab/settings");
+        const res = await fetch("/api/settings");
         if (!res.ok) return;
         const json = await res.json();
         const name = json?.lab?.labName || json?.labName;

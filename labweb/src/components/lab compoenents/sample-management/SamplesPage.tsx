@@ -162,7 +162,8 @@ const SamplesPage: React.FC = () => {
         return {
           // keep full backend sample so dialogs can show all fields
           ...s,
-          barcode: s.barcode || s.sampleNumber || "",
+          sampleId: s.sampleNumber || s._id || s.id || "",
+          barcode: s.barcode || "",
           patientName: s.patientName || "",
           test: testsLabel,
           status: statusNorm,
@@ -262,15 +263,15 @@ const SamplesPage: React.FC = () => {
     }
 
     const searchableFields = samples.flatMap(sample => [
-      sample.barcode,
-      sample.patientName,
-      sample.test,
-      sample.status
+      String((sample as any).barcode || ''),
+      String((sample as any).patientName || ''),
+      String((sample as any).test || ''),
+      String((sample as any).status || '')
     ]);
 
     const uniqueMatches = [...new Set(
       searchableFields.filter(field => 
-        field.toLowerCase().includes(term.toLowerCase())
+        String(field || '').toLowerCase().includes(term.toLowerCase())
       )
     )];
 
@@ -306,11 +307,12 @@ const SamplesPage: React.FC = () => {
 
   // Filter samples based on search and status
   const filteredSamples = samples.filter(sample => {
+    const q = searchTerm.toLowerCase();
     const matchesSearch = !searchTerm || 
-      sample.barcode.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      sample.patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      sample.test.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      sample.status.toLowerCase().includes(searchTerm.toLowerCase());
+      String((sample as any).barcode || '').toLowerCase().includes(q) ||
+      String((sample as any).patientName || '').toLowerCase().includes(q) ||
+      String((sample as any).test || '').toLowerCase().includes(q) ||
+      String((sample as any).status || '').toLowerCase().includes(q);
     
     const matchesStatus = statusFilter === "All Status" || normalizeSampleStatus(sample.status) === statusFilter;
     
@@ -424,9 +426,6 @@ const SamplesPage: React.FC = () => {
       return prev.map((s) => {
         if ((s as any)._id !== sampleId && (s as any).id !== sampleId) return s;
         const next: any = { ...s, status: newStatus, updatedAt: nowIso };
-        if (newStatus === "processing" && !next.processedAt) {
-          next.processedAt = nowIso;
-        }
         if (newStatus === "completed") {
           if (!next.processedAt) {
             next.processedAt = nowIso;
@@ -441,9 +440,6 @@ const SamplesPage: React.FC = () => {
       const token = localStorage.getItem("token");
       const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
       const payload: any = { status: newStatus, sampleStatus: newStatus };
-      if (newStatus === "processing") {
-        payload.processedAt = (sample as any).processedAt || nowIso;
-      }
       if (newStatus === "completed") {
         payload.processedAt = (sample as any).processedAt || nowIso;
         payload.completedAt = nowIso;
@@ -470,7 +466,7 @@ const SamplesPage: React.FC = () => {
 
       toast({
         title: "Status Updated",
-        description: `Sample ${sample.barcode} marked as ${newStatus}.`,
+        description: `Sample ${(sample as any).sampleNumber || (sample as any).sampleId || (sample as any).barcode || ''} marked as ${newStatus}.`,
       });
     } catch (err: any) {
       console.error("Failed to update sample status in backend", err?.response?.data || err);
@@ -559,7 +555,7 @@ const SamplesPage: React.FC = () => {
 
       toast({
         title: 'Processing Started',
-        description: `Sample ${sample.barcode} marked as processing.`,
+        description: `Sample ${(sample as any).sampleNumber || (sample as any).sampleId || (sample as any).barcode || ''} marked as processing.`,
       });
     } catch (err: any) {
       console.error("Failed to start processing in backend", err?.response?.data || err);
@@ -866,7 +862,7 @@ const SamplesPage: React.FC = () => {
                   <TableHead>Patient Name</TableHead>
                   <TableHead>Test(s)</TableHead>
                   <TableHead>Priority</TableHead>
-                  <TableHead>Collection Time</TableHead>
+                  <TableHead>Collection Date/Time</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Expected Completion Time/Date</TableHead>
                   <TableHead>Actions</TableHead>
@@ -874,8 +870,8 @@ const SamplesPage: React.FC = () => {
               </TableHeader>
               <TableBody>
                 {filteredSamples.map((sample) => (
-                  <TableRow key={sample.barcode}>
-                    <TableCell className="font-medium">{sample.barcode}</TableCell>
+                  <TableRow key={sample._id || sample.id || sample.sampleNumber || sample.sampleId || sample.barcode}>
+                    <TableCell className="font-medium">{sample.sampleNumber || sample.sampleId || sample._id || sample.id || '-'}</TableCell>
                     <TableCell>{sample.patientName}</TableCell>
                     <TableCell>
                       {(() => {
@@ -913,7 +909,26 @@ const SamplesPage: React.FC = () => {
                       })()}
                     </TableCell>
                     <TableCell className="capitalize">{sample.priority || 'normal'}</TableCell>
-                    <TableCell>{sample.collectionTime}</TableCell>
+                    <TableCell>
+                      {(() => {
+                        const raw = (sample as any).createdAt || (sample as any).collectionTime;
+                        if (!raw) return <span>-</span>;
+                        try {
+                          const dt = new Date(raw);
+                          if (!isNaN(dt.getTime())) {
+                            return (
+                              <div className="space-y-0.5">
+                                <div className="text-xs text-gray-600">{dt.toLocaleDateString()}</div>
+                                <div className="text-xs font-mono">{dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                              </div>
+                            );
+                          }
+                        } catch {
+                          // ignore
+                        }
+                        return <span className="text-xs text-gray-700">{String(raw)}</span>;
+                      })()}
+                    </TableCell>
                     <TableCell>{getStatusBadge(sample.status)}</TableCell>
                     <TableCell>
                       {(() => {
@@ -955,11 +970,15 @@ const SamplesPage: React.FC = () => {
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
-                              variant="ghost"
+                              variant="outline"
                               size="sm"
                               title="Update status"
                               disabled={!modulePerm.edit}
-                              className={!modulePerm.edit ? 'opacity-50 cursor-not-allowed' : undefined}
+                              className={
+                                !modulePerm.edit
+                                  ? 'opacity-50 cursor-not-allowed border-blue-800 text-blue-800'
+                                  : 'border-blue-800 text-blue-800 hover:bg-blue-50'
+                              }
                               onClick={() => {
                                 if (!modulePerm.edit) {
                                   toast({ title: 'Not allowed', description: 'You only have view permission for Samples.', variant: 'destructive' });
@@ -977,7 +996,7 @@ const SamplesPage: React.FC = () => {
                               return (
                                 <>
                                   <DropdownMenuItem
-                                    disabled={!modulePerm.edit || current === 'collected'}
+                                    disabled={!modulePerm.edit || current === 'collected' || current === 'completed'}
                                     onClick={() => handleUpdateStatus(sample, 'collected')}
                                   >
                                     Collected

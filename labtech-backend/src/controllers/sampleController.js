@@ -366,12 +366,33 @@ async function updateSampleStatus(req, res) {
     const isObjectId = /^[0-9a-fA-F]{24}$/.test(id);
     const query = isObjectId ? { _id: id } : { sampleNumber: id };
 
+    // Load the current record so we can safely handle immutable barcode assignment.
+    const current = await Sample.findOne(query).lean();
+    if (!current) {
+      return res.status(404).json({ message: 'Sample not found' });
+    }
+
     const update = {};
     if (status) {
       update.status = status;
     }
     if (typeof body.barcode === 'string') {
-      update.barcode = body.barcode;
+      const incomingBarcode = String(body.barcode || '').trim();
+      if (incomingBarcode) {
+        const existingBarcode = String(current.barcode || '').trim();
+        if (existingBarcode) {
+          // Barcode is immutable once assigned.
+          return res.status(409).json({ message: 'Barcode is already assigned for this sample' });
+        }
+
+        // Prevent duplicate barcode assignment across samples.
+        const other = await Sample.findOne({ barcode: incomingBarcode }).select({ _id: 1 }).lean();
+        if (other) {
+          return res.status(409).json({ message: 'Barcode is already used by another sample' });
+        }
+
+        update.barcode = incomingBarcode;
+      }
     }
     if (typeof body.processingBy === 'string') {
       update.processingBy = body.processingBy;
@@ -398,15 +419,7 @@ async function updateSampleStatus(req, res) {
       update.completedAt = new Date();
     }
 
-    const updated = await Sample.findOneAndUpdate(
-      query,
-      update,
-      { new: true }
-    ).lean();
-
-    if (!updated) {
-      return res.status(404).json({ message: 'Sample not found' });
-    }
+    const updated = await Sample.findOneAndUpdate(query, update, { new: true }).lean();
 
     if (Array.isArray(body.results) && body.results.length) {
       try {
