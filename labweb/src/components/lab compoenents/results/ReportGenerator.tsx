@@ -103,6 +103,8 @@ function buildHtmlFromTemplate(
     labSubtitle: string;
     labLogoUrl: string | null;
     labContact: { phone: string; email: string; address: string };
+    consultantPathologist?: string;
+    consultantQualification?: string;
   }
 ) {
   const fontSize = template?.styles?.fontSize || 12;
@@ -225,10 +227,10 @@ function buildHtmlFromTemplate(
   const consultantHtml = consultantFromTemplate
     ? `
       <div style="display:flex;justify-content:flex-end;">
-        <div style="text-align:left;font-size:11px;min-width:220px;">
-          <div><span style=\"font-weight:600;\">Consultant Name:</span> <span style=\"font-weight:400;\">${consultantFromTemplate?.consultantName || ''}</span></div>
-          <div><span style=\"font-weight:600;\">Qualification:</span> <span style=\"font-weight:400;\">${consultantFromTemplate?.qualification || ''}</span></div>
-          <div><span style=\"font-weight:600;\">Consultant Pathologist:</span> <span style=\"font-weight:400;\">${consultantFromTemplate?.consultantPathologist || ''}</span></div>
+        <div style="text-align:right;font-size:11px;min-width:260px;max-width:320px;">
+          <div style="margin-bottom:2px;"><span style=\"font-weight:400;\">${consultantFromTemplate?.consultantPathologist || options.consultantPathologist || ''}</span></div>
+          <div style="margin-bottom:2px;"><span style=\"font-weight:400;\">${consultantFromTemplate?.qualification || options.consultantQualification || ''}</span></div>
+          <div><span style=\"font-weight:600;\">Consultant Pathologist</span></div>
         </div>
       </div>
     `
