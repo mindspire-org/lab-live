@@ -109,8 +109,7 @@ export function printHtmlOverlay(html: string, options?: {
       const style = doc.createElement('style');
       style.textContent = `
         html, body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; height: 100%; }
-        body, body * { color: #000 !important; font-weight: 700 !important; text-shadow: none !important; box-shadow: none !important; }
-        @page { size: A4; margin: 8mm; }
+        body, body * { color: #000 !important; text-shadow: none !important; box-shadow: none !important; }
       `;
       doc.head?.appendChild(style);
     } catch {}

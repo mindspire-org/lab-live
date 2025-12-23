@@ -39,11 +39,16 @@ export function printSampleSlip(sample: SampleSlip, opts?: { title?: string }) {
 
   const title = opts?.title || `Sample_${sample?.sampleNumber ?? ''}`;
   const dt = sample?.dateTime ? new Date(sample.dateTime) : new Date();
+  // BC-86AC thermal slip printers are typically ~86mm paper width.
+  // Use mm-based sizing to reduce browser auto-scaling and ensure consistent physical output.
+  const paperWidthMm = 86;
+  const printPaddingMm = 2;
   const styles = `
     <style>
       *{ box-sizing: border-box; }
       html, body{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      body{ font-family: Segoe UI, Arial, 'Helvetica Neue', system-ui, ui-sans-serif; margin: 10mm; color: #000; font-weight:400; -webkit-font-smoothing: none; text-rendering: optimizeSpeed; }
+      html, body{ width: ${paperWidthMm}mm; }
+      body{ font-family: Segoe UI, Arial, 'Helvetica Neue', system-ui, ui-sans-serif; margin: 0; padding: ${printPaddingMm}mm; width: ${paperWidthMm}mm; color: #000; font-weight:400; -webkit-font-smoothing: none; text-rendering: optimizeSpeed; }
       .header{ display:block; text-align:center; border-bottom:1px dashed #000; padding-bottom:8px; margin-bottom:10px; }
       .h-left{ display:block; }
       .logo{ width:44px; height:44px; object-fit:contain; margin:0 auto 4px; }
@@ -73,7 +78,9 @@ export function printSampleSlip(sample: SampleSlip, opts?: { title?: string }) {
         .big{ font-size:20px; }
       }
       @media print {
-        @page{ size: 80mm auto; margin: 8mm; }
+        @page{ size: ${paperWidthMm}mm auto; margin: 0; }
+        html, body{ width: ${paperWidthMm}mm; margin: 0; padding: 0; }
+        body{ padding: ${printPaddingMm}mm; }
       }
     </style>`;
 
@@ -141,7 +148,7 @@ export function printSampleSlip(sample: SampleSlip, opts?: { title?: string }) {
     </body></html>`;
 
   // Use unified overlay: Ctrl+P prints, Ctrl+D closes
-  printHtmlOverlay(html, { title, width: 520, height: 740 });
+  printHtmlOverlay(html, { title, width: 380, height: 740 });
 }
 
 function safeJson(s: string | null): any {
