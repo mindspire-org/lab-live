@@ -336,7 +336,6 @@ const ReportGenerator = () => {
     return () => { window.open = prevOpen; };
   }, []);
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [reportTemplate, setReportTemplate] = useState<any | null>(null);
   const labContact = getLabContactFromStorage();
 
@@ -488,7 +487,16 @@ const ReportGenerator = () => {
     const address = sample?.address || '';
     const referringDoctor = (sample?.referringDoctor || sample?.referringPhysician || sample?.referringPhysicianName || '').toString();
     const sampleCollectedBy = (sample?.sampleCollectedBy || sample?.collectedBy || '').toString();
-    const collectedSample = (sample?.collectedSample || sample?.sampleType || '').toString();
+    const collectedSample = (() => {
+      try {
+        if (testKey && Array.isArray(sample?.interpretations)) {
+          const it = sample.interpretations.find((x: any) => String(x?.testKey || x?.testName || '') === String(testKey));
+          const cs = String(it?.collectedSample || '').trim();
+          if (cs) return cs;
+        }
+      } catch {}
+      return (sample?.collectedSample || sample?.sampleType || '').toString();
+    })();
     const collection = sample?.createdAt
       ? new Date(sample.createdAt).toLocaleString('en-US', {
           year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: true,
@@ -1122,14 +1130,13 @@ const ReportGenerator = () => {
 
   // Filtering for reports
   const filteredReports = reports.filter(report => {
-    const matchesSearch = 
-      report.patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      report.testsDisplay.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      report.sampleDisplayId.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesStatus = statusFilter === "all" || report.status === statusFilter;
-    
-    return matchesSearch && matchesStatus;
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return true;
+    const sampleId = String(report.sampleDisplayId || '').toLowerCase();
+    const name = String(report.patientName || '').toLowerCase();
+    const cnic = String((report as any).cnic || '').toLowerCase();
+    const phone = String((report as any).phone || '').toLowerCase();
+    return sampleId.includes(q) || name.includes(q) || cnic.includes(q) || phone.includes(q);
   });
 
   const generatePDF = async (reportId: string, mode: 'save' | 'print' = 'save') => {
@@ -1423,15 +1430,6 @@ const ReportGenerator = () => {
           <h1 className="text-3xl font-bold text-gray-900">Report Generator</h1>
           <p className="text-gray-600">Generate and manage test reports</p>
         </div>
-        <div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={fetchReports}
-          >
-            Refresh
-          </Button>
-        </div>
       </div>
 
       {/* Custom Report Modal removed */}
@@ -1440,29 +1438,17 @@ const ReportGenerator = () => {
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
           <Input
-            placeholder="Search reports..."
+            placeholder="Search by Sample ID, name, CNIC, phone..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-10"
           />
         </div>
-        
-        <div className="flex space-x-2">
-          {["all", "approved"].map((status) => (
-            <Button
-              key={status}
-              variant={statusFilter === status ? "default" : "outline"}
-              size="sm"
-              onClick={() => setStatusFilter(status)}
-            >
-              {status.charAt(0).toUpperCase() + status.slice(1)}
-            </Button>
-          ))}
-        </div>
       </div>
 
-      <div className="overflow-auto">
-        <table className="min-w-full border rounded-md overflow-hidden text-sm">
+      <div className="border rounded-md overflow-hidden">
+        <div className="overflow-auto">
+          <table className="min-w-full text-sm">
           <thead>
             <tr className="bg-gray-50 text-left text-gray-600">
               <th className="px-3 py-2 border-b">Sample ID</th>
@@ -1511,13 +1497,21 @@ const ReportGenerator = () => {
                 </td>
                 <td className="px-3 py-2 border-b text-right">
                   <div className="flex gap-2 justify-end">
-                    <Button variant="outline" size="sm" onClick={() => handleViewHtmlReport(report)}>
-                      <Eye className="w-4 h-4 mr-1" /> View
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 w-8 p-0"
+                      title="View"
+                      onClick={() => handleViewHtmlReport(report)}
+                    >
+                      <Eye className="w-4 h-4" />
+                      <span className="sr-only">View</span>
                     </Button>
                     <Button
                       variant="outline"
                       size="sm"
-                      className={viewOnly ? 'opacity-50 cursor-not-allowed' : undefined}
+                      className={`h-8 w-8 p-0 ${viewOnly ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      title="Print"
                       onClick={() => {
                         if (viewOnly) {
                           toast({ title: 'Not allowed', description: 'You only have view permission for Report Generator.', variant: 'destructive' });
@@ -1526,7 +1520,8 @@ const ReportGenerator = () => {
                         generatePDF(report.id, 'print');
                       }}
                     >
-                      <Printer className="w-4 h-4 mr-1" /> Print
+                      <Printer className="w-4 h-4" />
+                      <span className="sr-only">Print</span>
                     </Button>
                   </div>
                 </td>
@@ -1546,6 +1541,7 @@ const ReportGenerator = () => {
           </tbody>
         </table>
       </div>
+    </div>
 
       
     </div>

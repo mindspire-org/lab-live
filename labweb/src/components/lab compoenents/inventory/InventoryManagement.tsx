@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import AddNewItemForm from './AddNewItemForm';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -81,6 +81,8 @@ interface InventoryItem {
 const InventoryManagement = () => {
   const modulePerm = getModulePermission('Inventory');
   const readOnly = !modulePerm.edit;
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name?: string } | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   // single filter query replaces the three fields
   const [filterQuery, setFilterQuery] = useState("");
@@ -299,12 +301,11 @@ const InventoryManagement = () => {
     })();
   };
 
-  const handleDeleteItem = async (_id: string) => {
+  const doDeleteItem = async (_id: string) => {
     if (!modulePerm.delete) {
       toast({ title: 'Not allowed', description: "You don't have delete permission for Inventory.", variant: 'destructive' });
       return;
     }
-    if (!window.confirm("Are you sure you want to delete this item?")) return;
     try {
       const res = await authFetch(`${API_BASE}/inventory/${_id}`, { method: 'DELETE' });
       if (!res.ok) {
@@ -316,6 +317,16 @@ const InventoryManagement = () => {
     } catch (e) {
       toast({ title: 'Error', description: (e as Error).message || 'Failed to delete item', variant: 'destructive' });
     }
+  };
+
+  const handleDeleteItem = async (_id: string) => {
+    if (!modulePerm.delete) {
+      toast({ title: 'Not allowed', description: "You don't have delete permission for Inventory.", variant: 'destructive' });
+      return;
+    }
+    const item = inventory.find((i) => String(i._id) === String(_id));
+    setDeleteTarget({ id: _id, name: item?.name });
+    setShowDeleteConfirm(true);
   };
 
   // Replace full-page add form with modal dialog below in returned JSX
@@ -337,6 +348,46 @@ const InventoryManagement = () => {
             dbCategories={dbCategories}
             suppliers={suppliers}
           />
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Item Confirmation Dialog */}
+      <Dialog
+        open={showDeleteConfirm}
+        onOpenChange={(open) => {
+          setShowDeleteConfirm(open);
+          if (!open) setDeleteTarget(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Delete Item</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete {deleteTarget?.name ? `"${deleteTarget.name}"` : 'this item'} from inventory?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowDeleteConfirm(false);
+                setDeleteTarget(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={async () => {
+                const id = deleteTarget?.id;
+                setShowDeleteConfirm(false);
+                setDeleteTarget(null);
+                if (id) await doDeleteItem(id);
+              }}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
       {/* Edit Item Dialog */}

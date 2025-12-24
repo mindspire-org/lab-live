@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { TestType } from "@/lab types/sample";
 import { useToast } from "@/hooks/use-toast";
 import { Search, ArrowLeft, Clock, ChevronDown } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,7 +26,7 @@ export interface BackendSample {
   patientId?: string;
   barcode?: string;
   tests: TestType[];
-  status: "collected" | "processing" | "completed";
+  status: "collected" | "processing" | "completed" | "delayed";
   priority: "normal" | "high" | "urgent";
   results?: any[];
   resultsSubmittedAt?: string;
@@ -35,6 +35,8 @@ export interface BackendSample {
   receivedAt?: string;
   processedAt?: string;
   completedAt?: string;
+  delayedAt?: string;
+  barcodeAssignedAt?: string;
   sampleCollectedBy?: string;
   processingBy?: string;
   expectedCompletionDays?: number | string;
@@ -74,11 +76,13 @@ const SampleTrackingClean = ({ onNavigateBack }: SampleTrackingProps) => {
         const id = s._id || s.sampleNumber || "";
         const statusRaw = String(s.status || "").toLowerCase();
         const status: BackendSample["status"] =
-          statusRaw.includes("complet")
-            ? "completed"
-            : statusRaw.includes("process")
-            ? "processing"
-            : "collected";
+          statusRaw.includes("delay")
+            ? "delayed"
+            : statusRaw.includes("complet")
+              ? "completed"
+              : statusRaw.includes("process")
+                ? "processing"
+                : "collected";
         const priorityRaw = String(s.priority || "").toLowerCase();
         const priority: BackendSample["priority"] =
           priorityRaw === "urgent" ? "urgent" : priorityRaw === "high" ? "high" : "normal";
@@ -101,6 +105,8 @@ const SampleTrackingClean = ({ onNavigateBack }: SampleTrackingProps) => {
           receivedAt: s.receivedAt || s.createdAt,
           processedAt: s.processedAt,
           completedAt: s.completedAt,
+          delayedAt: s.delayedAt,
+          barcodeAssignedAt: s.barcodeAssignedAt,
           sampleCollectedBy: s.sampleCollectedBy,
           processingBy: s.processingBy,
           expectedCompletionDays: s.expectedCompletionDays,
@@ -194,6 +200,8 @@ const SampleTrackingClean = ({ onNavigateBack }: SampleTrackingProps) => {
         return "bg-yellow-600 text-white";
       case "completed":
         return "bg-green-600 text-white";
+      case "delayed":
+        return "bg-red-600 text-white";
       default:
         return "bg-gray-600 text-white";
     }
@@ -239,6 +247,7 @@ const SampleTrackingClean = ({ onNavigateBack }: SampleTrackingProps) => {
               <option value="all">All</option>
               <option value="collected">Collected</option>
               <option value="processing">Processing</option>
+              <option value="delayed">Delayed</option>
               <option value="completed">Completed</option>
             </select>
           </div>
@@ -268,6 +277,13 @@ const SampleTrackingClean = ({ onNavigateBack }: SampleTrackingProps) => {
                   const cnic = (s as any).cnic || (s as any).patientCnic || '-';
                   const phone = (s as any).phone || (s as any).patientPhone || '-';
                   const priority = String((s as any).priority || 'normal');
+                  const dateForStatus = (() => {
+                    const st = String((s as any).status || '').toLowerCase();
+                    if (st.includes('delay')) return (s as any).delayedAt || (s as any).updatedAt || (s as any).createdAt || s.receivedAt;
+                    if (st.includes('complet')) return (s as any).completedAt || (s as any).updatedAt || (s as any).createdAt || s.receivedAt;
+                    if (st.includes('process')) return (s as any).processedAt || (s as any).updatedAt || (s as any).createdAt || s.receivedAt;
+                    return s.receivedAt || (s as any).createdAt || (s as any).updatedAt;
+                  })();
                   return (
                     <tr key={s._id} className="hover:bg-gray-50">
                       <td className="px-3 py-2 border-b">{token}</td>
@@ -313,7 +329,7 @@ const SampleTrackingClean = ({ onNavigateBack }: SampleTrackingProps) => {
                       <td className="px-3 py-2 border-b">{cnic}</td>
                       <td className="px-3 py-2 border-b">{phone}</td>
                       <td className="px-3 py-2 border-b capitalize">{priority || 'normal'}</td>
-                      <td className="px-3 py-2 border-b whitespace-nowrap">{(() => { const d = (s as any).createdAt || (s as any).updatedAt || s.receivedAt; try { return d ? new Date(d).toLocaleString() : '-'; } catch { return '-'; } })()}</td>
+                      <td className="px-3 py-2 border-b whitespace-nowrap">{(() => { const d = dateForStatus; try { return d ? new Date(d).toLocaleString() : '-'; } catch { return '-'; } })()}</td>
                       <td className="px-3 py-2 border-b">
                         <Badge className={statusColor(s.status)}>{s.status}</Badge>
                       </td>
@@ -321,7 +337,8 @@ const SampleTrackingClean = ({ onNavigateBack }: SampleTrackingProps) => {
                         <div className="flex items-center justify-end gap-2 whitespace-nowrap">
                           <Button
                             size="sm"
-                            className="h-8 px-3 bg-blue-900 text-white hover:bg-blue-700"
+                            variant="outline"
+                            className="h-8 px-3 border-blue-800 text-blue-800 hover:bg-blue-50 hover:text-blue-800"
                             onClick={() => handleTrackSampleRow(s)}
                           >
                             Track
@@ -351,14 +368,19 @@ const SampleTrackingClean = ({ onNavigateBack }: SampleTrackingProps) => {
         <DialogContent className="w-full max-w-3xl max-h-[90vh] overflow-y-auto sm:rounded-2xl p-4 sm:p-6">
           {trackedSample && (
             <div className="space-y-6">
+              <DialogHeader>
+                <DialogTitle>Sample Tracking</DialogTitle>
+                <DialogDescription className="sr-only">Track and review the selected sample lifecycle details.</DialogDescription>
+              </DialogHeader>
+
               {/* Header: Sample ID */}
-              <div>
-                <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">
-                  Sample ID
-                </p>
-                <p className="font-mono text-sm font-semibold">
-                  {(trackedSample as any).tokenNo || (trackedSample as any).token || trackedSample._id}
-                </p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900">
+                    Sample ID: {String((trackedSample as any).tokenNo || (trackedSample as any).token || trackedSample._id || '').trim() || 'N/A'}
+                  </h2>
+                </div>
+
               </div>
 
               {/* Sample Information Card */}
@@ -368,9 +390,9 @@ const SampleTrackingClean = ({ onNavigateBack }: SampleTrackingProps) => {
                 </CardHeader>
                 <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
                   <div>
-                    <p className="text-xs text-gray-500 mb-1">Sample ID</p>
+                    <p className="text-xs text-gray-500 mb-1">Barcode</p>
                     <p className="font-mono text-gray-900">
-                      {(trackedSample as any).tokenNo || (trackedSample as any).token || trackedSample._id}
+                      {String((trackedSample as any).barcode || '').trim() || '-'}
                     </p>
                   </div>
                   <div>
@@ -432,74 +454,99 @@ const SampleTrackingClean = ({ onNavigateBack }: SampleTrackingProps) => {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
-                    {[
-                      {
-                        key: 'collected',
-                        label: 'Sample Collected',
-                        subtitle: `Sample Collected by ${String((trackedSample as any).sampleCollectedBy || '').trim() || 'Person'}`,
-                        time: trackedSample.receivedAt,
-                        active: !!trackedSample.receivedAt,
-                      },
-                      {
-                        key: 'barcode',
-                        label: 'Barcode Generated & Scanned',
-                        time: (trackedSample as any).barcodeGeneratedAt || trackedSample.updatedAt || trackedSample.receivedAt,
-                        active: !!String((trackedSample as any).barcode || '').trim(),
-                      },
-                      {
-                        key: 'processing',
-                        label: 'Sample Processing',
-                        subtitle: (() => {
-                          const by = String((trackedSample as any).processingBy || '').trim();
-                          const daysRaw = (trackedSample as any).expectedCompletionDays;
-                          const days = daysRaw === 0 || daysRaw ? String(daysRaw).trim() : '';
-                          const parts: string[] = [];
-                          if (by) parts.push(`Processing by ${by}`);
-                          if (days) parts.push(`Expected to be completed in ${days} day(s)`);
-                          return parts.length ? parts.join(' • ') : undefined;
-                        })(),
-                        time: trackedSample.processedAt,
-                        active: !!trackedSample.processedAt || trackedSample.status === 'processing' || trackedSample.status === 'completed',
-                      },
-                      {
-                        key: 'processing-completed',
-                        label: 'Sample processing Completed',
-                        subtitle: 'Ready for result entry.',
-                        time: trackedSample.processedAt,
-                        active: trackedSample.status === 'completed',
-                      },
-                      {
-                        key: 'report-created',
-                        label: 'Report Created',
-                        subtitle: 'Results have been entered and report is ready to print out/download',
-                        time: (() => {
-                          const hasResults = Array.isArray((trackedSample as any).results) && (trackedSample as any).results.length > 0;
-                          if (!hasResults) return null;
-                          return (
-                            (trackedSample as any).reportCreatedAt ||
-                            (trackedSample as any).reportGeneratedAt ||
-                            (trackedSample as any).reportCreatedOn ||
-                            (trackedSample as any).resultsSubmittedAt ||
-                            (trackedSample as any).submittedAt ||
-                            trackedSample.completedAt ||
-                            null
-                          );
-                        })(),
-                        active: (() => {
-                          const hasResults = Array.isArray((trackedSample as any).results) && (trackedSample as any).results.length > 0;
-                          return hasResults;
-                        })(),
-                      },
-                    ].map((step, index, arr) => {
+                    {(() => {
+                      const steps: any[] = [
+                        {
+                          key: 'collected',
+                          label: 'Sample Collected',
+                          subtitle: `Sample Collected by ${String((trackedSample as any).sampleCollectedBy || '').trim() || 'Person'}`,
+                          time: trackedSample.receivedAt,
+                          active: !!trackedSample.receivedAt || trackedSample.status === 'collected' || trackedSample.status === 'processing' || trackedSample.status === 'completed' || trackedSample.status === 'delayed',
+                        },
+                        {
+                          key: 'barcode',
+                          label: 'Barcode Generated & Assigned',
+                          subtitle: (() => {
+                            const bc = String((trackedSample as any).barcode || '').trim();
+                            if (!bc) return undefined;
+                            const sid = String((trackedSample as any).tokenNo || (trackedSample as any).token || trackedSample._id || '').trim();
+                            return `${bc} assigned to sample ${sid}`;
+                          })(),
+                          time: (trackedSample as any).barcodeAssignedAt || null,
+                          active: !!String((trackedSample as any).barcode || '').trim(),
+                        },
+                        {
+                          key: 'processing',
+                          label: 'Sample Processing',
+                          subtitle: (() => {
+                            const by = String((trackedSample as any).processingBy || '').trim();
+                            const daysRaw = (trackedSample as any).expectedCompletionDays;
+                            const days = daysRaw === 0 || daysRaw ? String(daysRaw).trim() : '';
+                            const parts: string[] = [];
+                            if (by) parts.push(`Processing by ${by}`);
+                            if (days) parts.push(`Expected to be completed in ${days} day(s)`);
+                            return parts.length ? parts.join(' • ') : undefined;
+                          })(),
+                          time: trackedSample.processedAt || null,
+                          active: !!trackedSample.processedAt || trackedSample.status === 'processing' || trackedSample.status === 'completed',
+                        },
+                        {
+                          key: 'processing-completed',
+                          label: 'Sample processing Completed',
+                          subtitle: 'Ready for result entry.',
+                          time: trackedSample.completedAt || null,
+                          active: trackedSample.status === 'completed',
+                        },
+                        {
+                          key: 'report-created',
+                          label: 'Report Created',
+                          subtitle: 'Results have been entered and report is ready to print out/download',
+                          time: (() => {
+                            const hasResults = Array.isArray((trackedSample as any).results) && (trackedSample as any).results.length > 0;
+                            if (!hasResults) return null;
+                            return (
+                              (trackedSample as any).reportCreatedAt ||
+                              (trackedSample as any).reportGeneratedAt ||
+                              (trackedSample as any).reportCreatedOn ||
+                              (trackedSample as any).resultsSubmittedAt ||
+                              (trackedSample as any).submittedAt ||
+                              trackedSample.completedAt ||
+                              null
+                            );
+                          })(),
+                          active: (() => {
+                            const hasResults = Array.isArray((trackedSample as any).results) && (trackedSample as any).results.length > 0;
+                            return hasResults;
+                          })(),
+                        },
+                      ];
+
+                      if (trackedSample.status === 'delayed') {
+                        const delayedStep = {
+                          key: 'delayed',
+                          label: 'Delayed',
+                          subtitle: 'Report is delayed due to unexpected reason.',
+                          time: (trackedSample as any).delayedAt || null,
+                          active: true,
+                          variant: 'delayed',
+                        };
+
+                        const lastActiveIndex = steps.reduce((acc, s, i) => (s?.active ? i : acc), -1);
+                        const insertAt = Math.min(Math.max(lastActiveIndex + 1, 0), steps.length);
+                        steps.splice(insertAt, 0, delayedStep);
+                      }
+
+                      return steps.map((step, index, arr) => {
                       const dt = step.time ? new Date(step.time) : null;
                       const timeLabel = dt && !isNaN(dt.getTime())
-                        ? dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                        : '--:--';
+                        ? dt.toLocaleString([], { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+                        : '--';
                       const isLast = index === arr.length - 1;
+                      const isDelayed = (step as any).variant === 'delayed';
                       const circleClass = step.active
-                        ? 'bg-blue-600 border-blue-600 shadow-sm'
+                        ? (isDelayed ? 'bg-red-600 border-red-600 shadow-sm' : 'bg-blue-600 border-blue-600 shadow-sm')
                         : 'bg-white border-gray-300';
-                      const lineClass = step.active ? 'bg-blue-200' : 'bg-gray-200';
+                      const lineClass = step.active ? (isDelayed ? 'bg-red-200' : 'bg-blue-200') : 'bg-gray-200';
                       const textClass = step.active ? 'text-gray-900' : 'text-gray-500';
 
                       return (
@@ -526,7 +573,8 @@ const SampleTrackingClean = ({ onNavigateBack }: SampleTrackingProps) => {
                           </div>
                         </div>
                       );
-                    })}
+                      });
+                    })()}
                   </div>
                 </CardContent>
               </Card>

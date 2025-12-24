@@ -72,6 +72,14 @@ function generateBarcodeValue() {
   return `BC-${new Date().getFullYear()}-${ts}`;
 }
 
+const normalizeSampleStatus = (raw: string | undefined | null): "collected" | "processing" | "completed" | "delayed" => {
+  const s = String(raw || "").toLowerCase();
+  if (s.includes("delay")) return "delayed";
+  if (s.includes("process")) return "processing";
+  if (s.includes("complet")) return "completed";
+  return "collected";
+};
+
 function BarcodeSvg({ value }: { value: string }) {
   const text = String(value || '');
   const modules = buildBarcodeModules(text);
@@ -252,20 +260,19 @@ const Barcodes: React.FC = () => {
   const [newSample, setNewSample] = useState({
     patientName: "",
     test: "",
-    status: "collected" as "collected" | "processing" | "completed",
+    status: "collected" as "collected" | "processing" | "completed" | "delayed",
     assignedAnalyzer: "",
     collectionTime: "",
   });
 
   // Helper functions
   const getStatusBadge = (status: string) => {
-    const raw = String(status || "").toLowerCase();
-    const norm: "collected" | "processing" | "completed" =
-      raw.includes("complet") ? "completed" : raw.includes("process") ? "processing" : "collected";
-    const statusConfig: Record<"collected" | "processing" | "completed", { color: string; text: string }> = {
+    const norm = normalizeSampleStatus(status);
+    const statusConfig: Record<"collected" | "processing" | "completed" | "delayed", { color: string; text: string }> = {
       collected: { color: "bg-blue-600 text-white", text: "Collected" },
       processing: { color: "bg-yellow-600 text-white", text: "Processing" },
       completed: { color: "bg-green-600 text-white", text: "Completed" },
+      delayed: { color: "bg-red-600 text-white", text: "Delayed" },
     };
     const config = statusConfig[norm];
     return (
@@ -347,12 +354,7 @@ const Barcodes: React.FC = () => {
       String(sample.test || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
       String(sample.status || "").toLowerCase().includes(searchTerm.toLowerCase());
     
-    const rawStatus = String(sample.status || "");
-    const normStatus = rawStatus.toLowerCase().includes("complet")
-      ? "completed"
-      : rawStatus.toLowerCase().includes("process")
-      ? "processing"
-      : "collected";
+    const normStatus = normalizeSampleStatus(sample.status);
     const matchesStatus = statusFilter === "All Status" || normStatus === statusFilter;
     
     return matchesSearch && matchesStatus;
@@ -367,12 +369,7 @@ const Barcodes: React.FC = () => {
       });
       const arr = Array.isArray(res.data) ? res.data : [];
       const mapped = arr.map((s: any) => {
-        const rawStatus = String(s.status || "");
-        const normStatus = rawStatus.toLowerCase().includes("complet")
-          ? "completed"
-          : rawStatus.toLowerCase().includes("process")
-          ? "processing"
-          : "collected";
+        const normStatus = normalizeSampleStatus(s.status);
         return {
           // keep full backend sample so we retain _id for PATCHing
           ...s,
@@ -1104,6 +1101,7 @@ Questions? Call +1 (555) 123-4567`;
                   <SelectItem value="collected">Collected</SelectItem>
                   <SelectItem value="processing">Processing</SelectItem>
                   <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="delayed">Delayed</SelectItem>
                 </SelectContent>
               </Select>
             </div>

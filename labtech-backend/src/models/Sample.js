@@ -22,6 +22,10 @@ const sampleSchema = new mongoose.Schema(
     collectedSamples: [{ type: String, trim: true }],
     referringDoctor: { type: String, default: '', trim: true },
 
+    receivedAt: { type: Date },
+    processedAt: { type: Date },
+    barcodeAssignedAt: { type: Date },
+
     tests: [
       {
         test: { type: mongoose.Schema.Types.ObjectId, ref: 'Test' },
@@ -49,9 +53,11 @@ const sampleSchema = new mongoose.Schema(
     priority: { type: String, enum: ['normal', 'urgent'], default: 'normal' },
     status: {
       type: String,
-      enum: ['collected', 'processing', 'completed', 'cancelled', 'received', 'in process'],
+      enum: ['collected', 'processing', 'completed', 'delayed', 'cancelled', 'received', 'in process'],
       default: 'collected',
     },
+
+    delayedAt: { type: Date },
 
     results: [
       {
@@ -74,6 +80,7 @@ const sampleSchema = new mongoose.Schema(
         testKey: { type: String, default: '' },
         testName: { type: String, default: '' },
         text: { type: String, default: '' },
+        collectedSample: { type: String, default: '' },
       },
     ],
     completedAt: { type: Date },

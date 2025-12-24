@@ -8,7 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { TestType } from "@/types/sample";
 import { AlertTriangle, CheckCircle, Send, ArrowLeft, Search, Plus, Trash, ChevronDown } from "lucide-react";
 import { api } from "@/lib/api";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -112,6 +112,7 @@ const ResultEntryClean = ({ onNavigateBack }: ResultEntryProps) => {
   const [results, setResults] = useState<BackendResult[]>([]);
   const [interpretation, setInterpretation] = useState("");
   const [testInterpretations, setTestInterpretations] = useState<Record<string, string>>({});
+  const [testCollectedSamples, setTestCollectedSamples] = useState<Record<string, string>>({});
   const [searchTerm, setSearchTerm] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -219,6 +220,7 @@ const ResultEntryClean = ({ onNavigateBack }: ResultEntryProps) => {
     if (!selectedSample) {
       setTestsWithParams([]);
       setTestInterpretations({});
+      setTestCollectedSamples({});
       setActiveTestKey(null);
       return;
     }
@@ -328,15 +330,21 @@ const ResultEntryClean = ({ onNavigateBack }: ResultEntryProps) => {
     const anySample: any = selectedSample as any;
     if (Array.isArray(anySample.interpretations)) {
       const map: Record<string, string> = {};
+      const csMap: Record<string, string> = {};
       anySample.interpretations.forEach((it: any) => {
         if (!it) return;
         const key = String(it.testKey || it.testName || "");
         if (!key) return;
         map[key] = it.text || "";
+        if (typeof it.collectedSample === 'string') {
+          csMap[key] = it.collectedSample;
+        }
       });
       setTestInterpretations(map);
+      setTestCollectedSamples(csMap);
     } else {
       setTestInterpretations({});
+      setTestCollectedSamples({});
     }
     loadParamsForSample();
   }, [selectedSample]);
@@ -527,7 +535,8 @@ const ResultEntryClean = ({ onNavigateBack }: ResultEntryProps) => {
         testKey: String(t.key || ''),
         testName: String(t.name || ''),
         text: (testInterpretations[String(t.key || '')] || '').trim(),
-      })).filter(it => it.testKey || it.text); // keep entries that have key or text
+        collectedSample: (testCollectedSamples[String(t.key || '')] || '').trim(),
+      })).filter(it => it.testKey || it.text || it.collectedSample); // keep entries that have key/text/sample
 
       const token = localStorage.getItem('token');
       try {
@@ -562,6 +571,7 @@ const ResultEntryClean = ({ onNavigateBack }: ResultEntryProps) => {
       setResults([]);
       setInterpretation("");
       setTestInterpretations({});
+      setTestCollectedSamples({});
       setManualRows([]);
       setIsEditing(false);
       loadSamples();
@@ -676,6 +686,15 @@ const ResultEntryClean = ({ onNavigateBack }: ResultEntryProps) => {
       ? testsWithParams.every(t => {
           const text = (testInterpretations[String(t.key)] || "").trim();
           return text.length > 0;
+        })
+      : true;
+
+  // When we have per-test tabs, also require collected sample selection for each test
+  const allTestsHaveCollectedSample =
+    testsWithParams.length > 0
+      ? testsWithParams.every(t => {
+          const v = (testCollectedSamples[String(t.key)] || "").trim();
+          return v.length > 0;
         })
       : true;
 
@@ -799,8 +818,7 @@ const ResultEntryClean = ({ onNavigateBack }: ResultEntryProps) => {
                                 if (!d) return null;
                                 try {
                                   const when = new Date(d).toLocaleDateString();
-                                  const label = (s.status === 'completed') ? 'Completed' : 'Updated';
-                                  return `${label}: ${when}`;
+                                  return when;
                                 } catch {
                                   return null;
                                 }
@@ -809,44 +827,56 @@ const ResultEntryClean = ({ onNavigateBack }: ResultEntryProps) => {
                           </td>
                           <td className="px-3 py-2 border-b text-right">
                             <div className="flex items-center justify-end gap-2">
-                              <Button
-                                size="sm"
-                                disabled={Array.isArray((s as any).results) && (s as any).results.length > 0}
-                                className={viewOnly ? 'opacity-50 cursor-not-allowed' : undefined}
-                                onClick={() => {
-                                  const hasSubmitted = Array.isArray((s as any).results) && (s as any).results.length > 0;
-                                  if (hasSubmitted) return;
-                                  if (!modulePerm.edit) {
-                                    toast({ title: 'Not allowed', description: 'You only have view permission for Result Entry.', variant: 'destructive' });
-                                    return;
-                                  }
-                                  setIsEditing(false);
-                                  const anyS: any = s as any;
-                                  setSelectedSample(s);
-                                  setResults(s.results || []);
-                                  setInterpretation(s.interpretation || "");
-                                  if (Array.isArray(anyS.interpretations)) {
-                                    const map: Record<string, string> = {};
-                                    anyS.interpretations.forEach((it: any) => {
-                                      if (!it) return;
-                                      const key = String(it.testKey || it.testName || "");
-                                      if (!key) return;
-                                      map[key] = it.text || "";
-                                    });
-                                    setTestInterpretations(map);
-                                  } else {
-                                    setTestInterpretations({});
-                                  }
-                                }}
-                              >
-                                {Array.isArray((s as any).results) && (s as any).results.length > 0 ? 'Submitted' : 'Select'}
-                              </Button>
+                              {Array.isArray((s as any).results) && (s as any).results.length > 0 ? (
+                                <div className="inline-flex items-center gap-1 text-green-700">
+                                  <CheckCircle className="w-4 h-4" />
+                                  <span className="text-xs font-medium">Submitted</span>
+                                </div>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  className={viewOnly ? 'opacity-50 cursor-not-allowed' : undefined}
+                                  onClick={() => {
+                                    const hasSubmitted = Array.isArray((s as any).results) && (s as any).results.length > 0;
+                                    if (hasSubmitted) return;
+                                    if (!modulePerm.edit) {
+                                      toast({ title: 'Not allowed', description: 'You only have view permission for Result Entry.', variant: 'destructive' });
+                                      return;
+                                    }
+                                    setIsEditing(false);
+                                    const anyS: any = s as any;
+                                    setSelectedSample(s);
+                                    setResults(s.results || []);
+                                    setInterpretation(s.interpretation || "");
+                                    if (Array.isArray(anyS.interpretations)) {
+                                      const map: Record<string, string> = {};
+                                      const csMap: Record<string, string> = {};
+                                      anyS.interpretations.forEach((it: any) => {
+                                        if (!it) return;
+                                        const key = String(it.testKey || it.testName || "");
+                                        if (!key) return;
+                                        map[key] = it.text || "";
+                                        if (typeof it.collectedSample === 'string') {
+                                          csMap[key] = it.collectedSample;
+                                        }
+                                      });
+                                      setTestInterpretations(map);
+                                      setTestCollectedSamples(csMap);
+                                    } else {
+                                      setTestInterpretations({});
+                                      setTestCollectedSamples({});
+                                    }
+                                  }}
+                                >
+                                  Select
+                                </Button>
+                              )}
 
                               {Array.isArray((s as any).results) && (s as any).results.length > 0 && (
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  className={viewOnly ? 'opacity-50 cursor-not-allowed' : undefined}
+                                  className={`${viewOnly ? 'opacity-50 cursor-not-allowed' : ''} border-blue-800 text-blue-800 hover:bg-blue-50 hover:text-blue-800`}
                                   onClick={async () => {
                                     if (!modulePerm.edit) {
                                       toast({ title: 'Not allowed', description: 'You only have view permission for Result Entry.', variant: 'destructive' });
@@ -903,13 +933,18 @@ const ResultEntryClean = ({ onNavigateBack }: ResultEntryProps) => {
                                       }
                                       if (Array.isArray(tr?.interpretations)) {
                                         const map: Record<string, string> = {};
+                                        const csMap: Record<string, string> = {};
                                         tr.interpretations.forEach((it: any) => {
                                           if (!it) return;
                                           const key = String(it.testKey || it.testName || "");
                                           if (!key) return;
                                           map[key] = it.text || "";
+                                          if (typeof it.collectedSample === 'string') {
+                                            csMap[key] = it.collectedSample;
+                                          }
                                         });
                                         setTestInterpretations(map);
+                                        setTestCollectedSamples(csMap);
                                       }
                                     } catch (err) {
                                       console.error('Failed to fetch test-result for edit', err);
@@ -948,6 +983,7 @@ const ResultEntryClean = ({ onNavigateBack }: ResultEntryProps) => {
             <>
               <DialogHeader>
                 <DialogTitle>Result Entry</DialogTitle>
+                <DialogDescription className="sr-only">Enter and verify test results for the selected sample.</DialogDescription>
               </DialogHeader>
 
               {/* patient intake details block above parameters */}
@@ -1023,7 +1059,7 @@ const ResultEntryClean = ({ onNavigateBack }: ResultEntryProps) => {
                             setManualRows(prev => [...prev, { id, name: '', unit: '', normalText: '' }]);
                           }
                         }}
-                        className="gap-2"
+                        className="gap-2 border-blue-800 text-blue-800 hover:bg-blue-50 hover:text-blue-800"
                       >
                         <Plus className="w-4 h-4" /> Add Row
                       </Button>
@@ -1039,7 +1075,11 @@ const ResultEntryClean = ({ onNavigateBack }: ResultEntryProps) => {
                       >
                         <TabsList className="mb-2 flex flex-wrap justify-start">
                           {testsWithParams.map(test => (
-                            <TabsTrigger key={test.key} value={test.key} className="text-xs sm:text-sm">
+                            <TabsTrigger
+                              key={test.key}
+                              value={test.key}
+                              className="text-xs sm:text-sm data-[state=active]:bg-blue-800 data-[state=active]:text-white"
+                            >
                               {test.name}
                             </TabsTrigger>
                           ))}
@@ -1411,7 +1451,11 @@ const ResultEntryClean = ({ onNavigateBack }: ResultEntryProps) => {
                     <Tabs defaultValue={testsWithParams[0]?.key} className="w-full">
                       <TabsList className="mb-2 flex flex-wrap justify-start">
                         {testsWithParams.map(test => (
-                          <TabsTrigger key={test.key} value={test.key} className="text-xs sm:text-sm">
+                          <TabsTrigger
+                            key={test.key}
+                            value={test.key}
+                            className="text-xs sm:text-sm data-[state=active]:bg-blue-800 data-[state=active]:text-white"
+                          >
                             {test.name}
                           </TabsTrigger>
                         ))}
@@ -1434,6 +1478,58 @@ const ResultEntryClean = ({ onNavigateBack }: ResultEntryProps) => {
                             disabled={!modulePerm.edit}
                             placeholder={`Interpretation for ${test.name}...`}
                           />
+
+                          <div className="mt-3">
+                            <p className="text-sm font-medium text-gray-700">Collected Sample</p>
+                            <Select
+                              value={testCollectedSamples[String(test.key)] ?? ''}
+                              onValueChange={(v) => {
+                                if (!modulePerm.edit) {
+                                  toast({ title: 'Not allowed', description: 'You only have view permission for Result Entry.', variant: 'destructive' });
+                                  return;
+                                }
+                                const next = v === '__none__' || v === '__no_samples__' ? '' : v;
+                                setTestCollectedSamples(prev => ({ ...prev, [String(test.key)]: next }));
+                              }}
+                              disabled={!modulePerm.edit}
+                            >
+                              <SelectTrigger className="w-full h-9 mt-2">
+                                <SelectValue placeholder="Select collected sample" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {(() => {
+                                  const anyS: any = selectedSample as any;
+                                  const list: string[] = [];
+                                  try {
+                                    if (Array.isArray(anyS?.collectedSamples) && anyS.collectedSamples.length) {
+                                      anyS.collectedSamples.forEach((x: any) => {
+                                        const v = String(x || '').trim();
+                                        if (v) list.push(v);
+                                      });
+                                    }
+                                    if (!list.length) {
+                                      const raw = String(anyS?.collectedSample || '').trim();
+                                      if (raw) {
+                                        raw.split(',').map((v) => v.trim()).filter(Boolean).forEach((v) => list.push(v));
+                                      }
+                                    }
+                                  } catch {}
+                                  const uniq = Array.from(new Set(list.map((v) => v.toLowerCase()))).map((lower) => list.find((v) => v.toLowerCase() === lower) || lower);
+                                  if (!uniq.length) {
+                                    return <SelectItem value="__no_samples__" disabled>No collected samples</SelectItem>;
+                                  }
+                                  return (
+                                    <>
+                                      <SelectItem value="__none__">None</SelectItem>
+                                      {uniq.map((v) => (
+                                        <SelectItem key={v} value={v}>{v}</SelectItem>
+                                      ))}
+                                    </>
+                                  );
+                                })()}
+                              </SelectContent>
+                            </Select>
+                          </div>
                         </TabsContent>
                       ))}
                     </Tabs>
@@ -1461,7 +1557,7 @@ const ResultEntryClean = ({ onNavigateBack }: ResultEntryProps) => {
                 <Button
                   size="sm"
                   onClick={handleSubmit}
-                  disabled={(!modulePerm.edit) || submitting || !allCoreParametersHaveResult || !allTestsHaveInterpretation}
+                  disabled={(!modulePerm.edit) || submitting || !allCoreParametersHaveResult || !allTestsHaveInterpretation || !allTestsHaveCollectedSample}
                 >
                   <Send className="w-4 h-4 mr-1" />{isEditing ? 'Update' : 'Submit'}
                 </Button>

@@ -150,6 +150,10 @@ const SuppliersPage: React.FC = () => {
   const [page, setPage] = useState(1);
   const pageSize = 10;
 
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<'delete-supplier' | 'cancel-contract' | null>(null);
+  const [confirmTarget, setConfirmTarget] = useState<SupplierRecord | null>(null);
+
   const [suppliers, setSuppliers] = useState<SupplierRecord[]>([]);
 
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -480,27 +484,32 @@ const SuppliersPage: React.FC = () => {
     })();
   };
 
+  const doDeleteSupplier = async (supplier: SupplierRecord) => {
+    if (!modulePerm.delete) {
+      toast({ title: 'Not allowed', description: "You don't have delete permission for Suppliers.", variant: 'destructive' });
+      return;
+    }
+    try {
+      const res = await authFetch(`/api/lab/suppliers/${supplier.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || 'Failed to delete supplier');
+      }
+      await loadSuppliers();
+      toast({ title: 'Supplier deleted', description: `${supplier.name} has been deleted.` });
+    } catch (e) {
+      toast({ title: 'Error', description: (e as Error).message || 'Failed to delete supplier', variant: 'destructive' });
+    }
+  };
+
   const handleDeleteSupplier = (supplier: SupplierRecord) => {
     if (!modulePerm.delete) {
       toast({ title: 'Not allowed', description: "You don't have delete permission for Suppliers.", variant: 'destructive' });
       return;
     }
-    const confirmed = window.confirm('Are you sure you want to delete this supplier?');
-    if (!confirmed) return;
-
-    (async () => {
-      try {
-        const res = await authFetch(`/api/lab/suppliers/${supplier.id}`, { method: 'DELETE' });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.message || 'Failed to delete supplier');
-        }
-        await loadSuppliers();
-        toast({ title: 'Supplier deleted', description: `${supplier.name} has been deleted.` });
-      } catch (e) {
-        toast({ title: 'Error', description: (e as Error).message || 'Failed to delete supplier', variant: 'destructive' });
-      }
-    })();
+    setConfirmAction('delete-supplier');
+    setConfirmTarget(supplier);
+    setShowConfirm(true);
   };
 
   const openEdit = (supplier: SupplierRecord) => {
@@ -578,15 +587,11 @@ const SuppliersPage: React.FC = () => {
     })();
   };
 
-  const handleCancelContract = (id: string) => {
+  const doCancelContract = async (supplier: SupplierRecord) => {
     if (!modulePerm.edit) {
       toast({ title: 'Not allowed', description: 'You only have view permission for Suppliers.', variant: 'destructive' });
       return;
     }
-    const confirmed = window.confirm(
-      "Are you sure you want to cancel this supplier's contract?"
-    );
-    if (!confirmed) return;
 
     const today = new Date();
     const yyyy = today.getFullYear();
@@ -594,25 +599,98 @@ const SuppliersPage: React.FC = () => {
     const dd = String(today.getDate()).padStart(2, "0");
     const todayStr = `${yyyy}-${mm}-${dd}`;
 
-    (async () => {
-      try {
-        const res = await authFetch(`/api/lab/suppliers/${id}`, {
-          method: 'PUT',
-          body: JSON.stringify({ contractEndDate: todayStr, status: 'Cancelled' }),
-        });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.message || 'Failed to cancel contract');
-        }
-        await loadSuppliers();
-      } catch (e) {
-        toast({ title: 'Error', description: (e as Error).message || 'Failed to cancel contract', variant: 'destructive' });
+    try {
+      const res = await authFetch(`/api/lab/suppliers/${supplier.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ contractEndDate: todayStr, status: 'Cancelled' }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || 'Failed to cancel contract');
       }
-    })();
+      await loadSuppliers();
+    } catch (e) {
+      toast({ title: 'Error', description: (e as Error).message || 'Failed to cancel contract', variant: 'destructive' });
+    }
+  };
+
+  const handleCancelContract = (supplier: SupplierRecord) => {
+    if (!modulePerm.edit) {
+      toast({ title: 'Not allowed', description: 'You only have view permission for Suppliers.', variant: 'destructive' });
+      return;
+    }
+    setConfirmAction('cancel-contract');
+    setConfirmTarget(supplier);
+    setShowConfirm(true);
   };
 
   return (
     <div className="p-4 sm:p-6 space-y-6 bg-slate-50">
+      {/* Confirmation Dialog (reuse logout dialog style) */}
+      <Dialog
+        open={showConfirm}
+        onOpenChange={(open) => {
+          setShowConfirm(open);
+          if (!open) {
+            setConfirmAction(null);
+            setConfirmTarget(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>
+              {confirmAction === 'delete-supplier'
+                ? 'Delete Supplier'
+                : confirmAction === 'cancel-contract'
+                ? 'Cancel Contract'
+                : 'Confirm'}
+            </DialogTitle>
+            <DialogDescription>
+              {confirmAction === 'delete-supplier'
+                ? `Are you sure you want to delete ${confirmTarget?.name ? `"${confirmTarget.name}"` : 'this supplier'}?`
+                : confirmAction === 'cancel-contract'
+                ? `Are you sure you want to cancel ${confirmTarget?.name ? `"${confirmTarget.name}"` : 'this supplier'}'s contract?`
+                : 'Are you sure you want to continue?'}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowConfirm(false);
+                setConfirmAction(null);
+                setConfirmTarget(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={async () => {
+                const action = confirmAction;
+                const target = confirmTarget;
+                setShowConfirm(false);
+                setConfirmAction(null);
+                setConfirmTarget(null);
+                if (!action || !target) return;
+                if (action === 'delete-supplier') {
+                  await doDeleteSupplier(target);
+                } else if (action === 'cancel-contract') {
+                  await doCancelContract(target);
+                }
+              }}
+            >
+              {confirmAction === 'delete-supplier'
+                ? 'Delete'
+                : confirmAction === 'cancel-contract'
+                ? 'Cancel Contract'
+                : 'Confirm'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Supplier Management</h1>
@@ -804,7 +882,7 @@ const SuppliersPage: React.FC = () => {
                           variant="outline"
                           size="sm"
                           className="h-8 px-3 text-xs rounded-full text-red-600 border-red-200 hover:bg-red-50 w-full sm:w-auto"
-                          onClick={() => handleCancelContract(s.id)}
+                          onClick={() => handleCancelContract(s)}
                         >
                           <XCircle className="h-3.5 w-3.5 mr-2" />
                           Cancel
