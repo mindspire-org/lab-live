@@ -35,7 +35,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { 
+import { printTokenSlip } from "@/utils/printToken";
+import {
   Search, 
   Filter, 
   Eye, 
@@ -92,8 +93,9 @@ function getModulePermission(moduleName: string): { view: boolean; edit: boolean
   }
 }
 
-const normalizeSampleStatus = (raw: string | undefined | null): "collected" | "processing" | "completed" => {
+const normalizeSampleStatus = (raw: string | undefined | null): "collected" | "processing" | "completed" | "delayed" => {
   const s = String(raw || "").toLowerCase();
+  if (s.includes("delay")) return "delayed";
   if (s.includes("process")) return "processing";
   if (s.includes("complet")) return "completed";
   return "collected";
@@ -182,10 +184,11 @@ const SamplesPage: React.FC = () => {
   // Helper functions for sample management
   const getStatusBadge = (status: string) => {
     const norm = normalizeSampleStatus(status);
-    const statusConfig: Record<"collected" | "processing" | "completed", { color: string; text: string }> = {
+    const statusConfig: Record<"collected" | "processing" | "completed" | "delayed", { color: string; text: string }> = {
       collected: { color: "bg-blue-600 text-white", text: "Collected" },
       processing: { color: "bg-yellow-600 text-white", text: "Processing" },
       completed: { color: "bg-green-600 text-white", text: "Completed" },
+      delayed: { color: "bg-red-600 text-white", text: "Delayed" },
     };
     const config = statusConfig[norm];
     return (
@@ -325,6 +328,57 @@ const SamplesPage: React.FC = () => {
     setShowViewModal(true);
   };
 
+  const handlePrintTokenSlip = async (sample: any) => {
+    try {
+      const sampleId = String(sample?._id || sample?.id || '').trim();
+      let full = sample;
+      // Fetch the latest sample from backend so slip is DB-backed even if list is stale
+      if (sampleId) {
+        try {
+          const token = localStorage.getItem("token");
+          const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+          const { data } = await api.get(`/labtech/samples/${sampleId}`, { headers });
+          if (data) full = data;
+        } catch {
+          // fall back to row data
+        }
+      }
+
+      const anyS: any = full as any;
+      const tokenNumber = String(anyS.sampleNumber || anyS.tokenNo || anyS.token || anyS.barcode || anyS._id || '').trim();
+      const dateTime = anyS.receivedAt || anyS.createdAt || new Date().toISOString();
+      const patientName = anyS.patientName || '';
+      const age = anyS.age || '';
+      const gender = anyS.gender || '';
+      const phone = anyS.phone || anyS.patientPhone || '';
+      const address = anyS.address || '';
+      const doctor = anyS.referringDoctor || '';
+      const mrNumber = anyS.patientId || (anyS.patient && anyS.patient.patientId) || '';
+      const finalFee = Number(anyS.totalAmount || 0);
+
+      printTokenSlip({
+        tokenNumber,
+        dateTime,
+        patientName,
+        age,
+        gender,
+        phone,
+        address,
+        doctor,
+        department: 'Pathology',
+        finalFee,
+        mrNumber,
+        billingType: String(anyS.paymentMethod || '').toLowerCase() === 'credit' ? 'credit' : undefined,
+        corporateName: anyS.corporateName || undefined,
+        guardianRelation: anyS.guardianRelation || undefined,
+        guardianName: anyS.guardianName || undefined,
+        cnic: anyS.cnic || anyS.patientCnic || anyS.patientCNIC || undefined,
+      });
+    } catch (e) {
+      toast({ title: 'Error', description: 'Failed to open token slip preview.', variant: 'destructive' });
+    }
+  };
+
   const handleEditSample = (sample: any) => {
     if (!modulePerm.edit) {
       toast({ title: 'Not allowed', description: "You only have view permission for Samples.", variant: 'destructive' });
@@ -398,7 +452,7 @@ const SamplesPage: React.FC = () => {
   // Update sample status for tracking (moved from Barcodes)
   const handleUpdateStatus = async (
     sample: any,
-    newStatus: "collected" | "processing" | "completed"
+    newStatus: "collected" | "processing" | "completed" | "delayed"
   ) => {
     if (newStatus === 'processing') {
       openProcessingDialog(sample);
@@ -426,6 +480,9 @@ const SamplesPage: React.FC = () => {
       return prev.map((s) => {
         if ((s as any)._id !== sampleId && (s as any).id !== sampleId) return s;
         const next: any = { ...s, status: newStatus, updatedAt: nowIso };
+        if (newStatus === "delayed" && !next.delayedAt) {
+          next.delayedAt = nowIso;
+        }
         if (newStatus === "completed") {
           if (!next.processedAt) {
             next.processedAt = nowIso;
@@ -440,6 +497,9 @@ const SamplesPage: React.FC = () => {
       const token = localStorage.getItem("token");
       const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
       const payload: any = { status: newStatus, sampleStatus: newStatus };
+      if (newStatus === "delayed") {
+        payload.delayedAt = (sample as any).delayedAt || nowIso;
+      }
       if (newStatus === "completed") {
         payload.processedAt = (sample as any).processedAt || nowIso;
         payload.completedAt = nowIso;
@@ -819,6 +879,7 @@ const SamplesPage: React.FC = () => {
                   <SelectItem value="collected">Collected</SelectItem>
                   <SelectItem value="processing">Processing</SelectItem>
                   <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="delayed">Delayed</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -966,87 +1027,114 @@ const SamplesPage: React.FC = () => {
                       })()}
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-2">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              title="Update status"
-                              disabled={!modulePerm.edit}
-                              className={
-                                !modulePerm.edit
-                                  ? 'opacity-50 cursor-not-allowed border-blue-800 text-blue-800'
-                                  : 'border-blue-800 text-blue-800 hover:bg-blue-50'
-                              }
-                              onClick={() => {
-                                if (!modulePerm.edit) {
-                                  toast({ title: 'Not allowed', description: 'You only have view permission for Samples.', variant: 'destructive' });
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => handleViewSample(sample)}
+                            title="View details"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => handleEditSample(sample)}
+                            title="Edit sample"
+                            disabled={!modulePerm.edit}
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-red-600 hover:text-red-700"
+                            onClick={() => handleDeleteSample(sample)}
+                            title="Delete sample"
+                            disabled={!modulePerm.delete}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                title="Update status"
+                                disabled={!modulePerm.edit}
+                                className={
+                                  !modulePerm.edit
+                                    ? 'h-8 px-3 opacity-50 cursor-not-allowed border-blue-800 text-blue-800'
+                                    : 'h-8 px-3 border-blue-800 text-blue-800 hover:bg-blue-50'
                                 }
-                              }}
-                            >
-                              Update Status
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {(() => {
-                              const raw = String(sample?.status || '').toLowerCase();
-                              const current: "collected" | "processing" | "completed" =
-                                raw.includes('complet') ? 'completed' : raw.includes('process') ? 'processing' : 'collected';
-                              return (
-                                <>
-                                  <DropdownMenuItem
-                                    disabled={!modulePerm.edit || current === 'collected' || current === 'completed'}
-                                    onClick={() => handleUpdateStatus(sample, 'collected')}
-                                  >
-                                    Collected
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    disabled={!modulePerm.edit || current === 'processing'}
-                                    onClick={() => handleUpdateStatus(sample, 'processing')}
-                                  >
-                                    Processing
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    disabled={!modulePerm.edit || current === 'completed'}
-                                    onClick={() => handleUpdateStatus(sample, 'completed')}
-                                  >
-                                    Completed
-                                  </DropdownMenuItem>
-                                </>
-                              );
-                            })()}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => handleViewSample(sample)}
-                          title="View details"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => handleEditSample(sample)}
-                          title="Edit sample"
-                          disabled={!modulePerm.edit}
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-red-600 hover:text-red-700"
-                          onClick={() => handleDeleteSample(sample)}
-                          title="Delete sample"
-                          disabled={!modulePerm.delete}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                                onClick={() => {
+                                  if (!modulePerm.edit) {
+                                    toast({ title: 'Not allowed', description: 'You only have view permission for Samples.', variant: 'destructive' });
+                                  }
+                                }}
+                              >
+                              Status
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              {(() => {
+                                const raw = String(sample?.status || '').toLowerCase();
+                                const current: "collected" | "processing" | "completed" | "delayed" =
+                                  raw.includes('delay')
+                                    ? 'delayed'
+                                    : raw.includes('complet')
+                                      ? 'completed'
+                                      : raw.includes('process')
+                                        ? 'processing'
+                                        : 'collected';
+                                return (
+                                  <>
+                                    <DropdownMenuItem
+                                      disabled={!modulePerm.edit || current === 'collected' || current === 'completed'}
+                                      onClick={() => handleUpdateStatus(sample, 'collected')}
+                                    >
+                                      Collected
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      disabled={!modulePerm.edit || current === 'processing' || current === 'completed'}
+                                      onClick={() => handleUpdateStatus(sample, 'processing')}
+                                    >
+                                      Processing
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      disabled={!modulePerm.edit || current === 'delayed' || current === 'completed'}
+                                      onClick={() => handleUpdateStatus(sample, 'delayed')}
+                                    >
+                                      Delayed
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem
+                                      disabled={!modulePerm.edit || current === 'completed'}
+                                      onClick={() => handleUpdateStatus(sample, 'completed')}
+                                    >
+                                      Completed
+                                    </DropdownMenuItem>
+                                  </>
+                                );
+                              })()}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 px-3 border-blue-800 text-blue-800 hover:bg-blue-50"
+                            onClick={() => handlePrintTokenSlip(sample)}
+                            title="Token"
+                          >
+                            Token
+                          </Button>
+                        </div>
                       </div>
                     </TableCell>
                   </TableRow>

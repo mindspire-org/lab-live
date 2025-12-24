@@ -1319,20 +1319,24 @@ const SampleIntakeClean = ({ onNavigateBack }: SampleIntakeProps) => {
             </div>
             <div>
               <Label>Referring Doctor</Label>
-              <Input
-                value={patientInfo.referringDoctor}
-                placeholder="Dr. Name"
-                onChange={(e) => {
-                  const raw = String(e.target.value || '');
-                  const noDigits = raw.replace(/\d/g, '');
-                  const trimmed = noDigits.trimStart();
-                  const withoutPrefix = trimmed.replace(/^dr\.?\s*/i, '');
-                  const next = withoutPrefix ? `Dr. ${withoutPrefix}` : '';
-                  setPatientInfo({ ...patientInfo, referringDoctor: next });
-                }}
-                onBlur={() => setTouched((p) => ({ ...p, referringDoctor: true }))}
-                className="h-10"
-              />
+              <div className="flex items-center">
+                <div className="h-10 px-3 inline-flex items-center border border-r-0 rounded-l-md bg-gray-50 text-gray-700 text-sm">
+                  Dr.
+                </div>
+                <Input
+                  value={String(patientInfo.referringDoctor || '').replace(/^dr\.?\s*/i, '')}
+                  placeholder="Name"
+                  onChange={(e) => {
+                    const raw = String(e.target.value || '');
+                    const noDigits = raw.replace(/\d/g, '');
+                    const trimmed = noDigits.trimStart();
+                    const next = trimmed ? `Dr. ${trimmed}` : '';
+                    setPatientInfo({ ...patientInfo, referringDoctor: next });
+                  }}
+                  onBlur={() => setTouched((p) => ({ ...p, referringDoctor: true }))}
+                  className="h-10 rounded-l-none"
+                />
+              </div>
               {referringDoctorError && <div className="text-sm text-red-600 mt-1">{referringDoctorError}</div>}
             </div>
           </div>

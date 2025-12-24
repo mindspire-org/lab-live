@@ -461,18 +461,18 @@ const Settings = () => {
       </div>
 
       <Tabs defaultValue="lab" className="w-full">
-        <TabsList className="flex gap-4 mb-4">
-          <TabsTrigger value="backup">
-            <Save className="w-4 h-4 mr-2" />
-            Backup
-          </TabsTrigger>
-          <TabsTrigger value="lab">
+        <TabsList className="grid w-full grid-cols-3 gap-2 mb-4">
+          <TabsTrigger value="lab" className="w-full data-[state=active]:bg-blue-800 data-[state=active]:text-white">
             <Building className="w-4 h-4 mr-2" />
             Lab
           </TabsTrigger>
-          <TabsTrigger value="pricing">
+          <TabsTrigger value="pricing" className="w-full data-[state=active]:bg-blue-800 data-[state=active]:text-white">
             <DollarSign className="w-4 h-4 mr-2" />
             Pricing
+          </TabsTrigger>
+          <TabsTrigger value="backend" className="w-full data-[state=active]:bg-blue-800 data-[state=active]:text-white">
+            <Save className="w-4 h-4 mr-2" />
+            Backend
           </TabsTrigger>
         </TabsList>
 
@@ -614,7 +614,7 @@ const Settings = () => {
                     </div>
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground">PNG or JPG recommended. This image is stored locally and used on printed receipts/reports.</p>
+                <p className="text-xs text-muted-foreground">PNG or JPG recommended. This logo will also be used on printed receipts/reports.</p>
               </div>
             </CardContent>
           </Card>
@@ -706,15 +706,15 @@ const Settings = () => {
           </Card>
         </TabsContent>
 
-        {/* Backup Tab */}
-        <TabsContent value="backup">
+        {/* Backend Tab */}
+        <TabsContent value="backend">
           <Card>
             <CardHeader>
               <CardTitle>Backup Settings</CardTitle>
               <CardDescription>Configure and run backups</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-xl">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
                 <div className="space-y-2">
                   <Label htmlFor="fromDate1">From</Label>
                   <input

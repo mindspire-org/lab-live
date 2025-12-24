@@ -39,6 +39,7 @@ const TestResultSchema = new mongoose.Schema(
         testKey: { type: String, default: '' },
         testName: { type: String, default: '' },
         text: { type: String, default: '' },
+        collectedSample: { type: String, default: '' },
       },
     ],
     status: { type: String, default: 'completed', trim: true },

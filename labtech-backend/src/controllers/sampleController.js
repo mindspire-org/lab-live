@@ -166,6 +166,7 @@ async function createSample(req, res) {
           : Number(body.totalAmount) || 0,
       priority: body.priority || 'normal',
       status,
+      receivedAt: now,
     });
 
     // Accumulator used later to allocate income:
@@ -358,6 +359,7 @@ async function updateSampleStatus(req, res) {
     if (hasStatus) {
       status = 'collected';
       if (rawLower.includes('collect')) status = 'collected';
+      else if (rawLower.includes('delay')) status = 'delayed';
       else if (rawLower.includes('process')) status = 'processing';
       else if (rawLower.includes('complet')) status = 'completed';
       else if (rawLower.includes('cancel')) status = 'cancelled';
@@ -376,6 +378,16 @@ async function updateSampleStatus(req, res) {
     if (status) {
       update.status = status;
     }
+    if (status === 'processing') {
+      if (!current.processedAt) {
+        update.processedAt = new Date();
+      }
+    }
+    if (status === 'delayed') {
+      if (!current.delayedAt) {
+        update.delayedAt = new Date();
+      }
+    }
     if (typeof body.barcode === 'string') {
       const incomingBarcode = String(body.barcode || '').trim();
       if (incomingBarcode) {
@@ -392,6 +404,9 @@ async function updateSampleStatus(req, res) {
         }
 
         update.barcode = incomingBarcode;
+        if (!current.barcodeAssignedAt) {
+          update.barcodeAssignedAt = new Date();
+        }
       }
     }
     if (typeof body.processingBy === 'string') {
@@ -416,6 +431,9 @@ async function updateSampleStatus(req, res) {
       update.interpretations = body.testInterpretations;
     }
     if (status === 'completed') {
+      if (!current.processedAt) {
+        update.processedAt = new Date();
+      }
       update.completedAt = new Date();
     }
 

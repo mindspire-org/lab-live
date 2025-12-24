@@ -957,10 +957,10 @@ const StaffAttendance: React.FC<StaffAttendanceProps> = ({ isUrdu }) => {
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="daily">{t.dailyView}</TabsTrigger>
-          <TabsTrigger value="monthly">{t.monthlyView}</TabsTrigger>
-          <TabsTrigger value="staff">{t.staffManagement}</TabsTrigger>
-          <TabsTrigger value="settings">Settings</TabsTrigger>
+          <TabsTrigger value="daily" className="data-[state=active]:bg-blue-800 data-[state=active]:text-white">{t.dailyView}</TabsTrigger>
+          <TabsTrigger value="monthly" className="data-[state=active]:bg-blue-800 data-[state=active]:text-white">{t.monthlyView}</TabsTrigger>
+          <TabsTrigger value="staff" className="data-[state=active]:bg-blue-800 data-[state=active]:text-white">{t.staffManagement}</TabsTrigger>
+          <TabsTrigger value="settings" className="data-[state=active]:bg-blue-800 data-[state=active]:text-white">Settings</TabsTrigger>
         </TabsList>
 
         <TabsContent value="daily" className="space-y-6">
