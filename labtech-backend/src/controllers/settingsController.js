@@ -19,6 +19,12 @@ async function updateSettings(req, res) {
   try {
     const payload = req.body || {};
 
+    // Remove deprecated lab fields (legacy clients may still send them)
+    if (payload && payload.lab && typeof payload.lab === 'object') {
+      delete payload.lab.consultantPathologist;
+      delete payload.lab.consultantQualification;
+    }
+
     const settings = await Settings.findOneAndUpdate({}, payload, {
       new: true,
       upsert: true,

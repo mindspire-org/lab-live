@@ -11,12 +11,21 @@ import {
   Globe, 
   Bell,
   Save,
-  ArrowLeft
+  ArrowLeft,
+  Trash2
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "@/lab lib/api";
 import { useSettings } from "@/contexts/SettingsContext";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 function getModulePermission(moduleName: string): { view: boolean; edit: boolean; delete: boolean } {
   try {
@@ -60,8 +69,11 @@ type LabSettings = {
   defaultLanguage: string;
   directorName?: string;
   accreditationBody?: string;
-  consultantPathologist?: string;
-  consultantQualification?: string;
+  consultants?: Array<{
+    name: string;
+    qualifications: string;
+    category: string;
+  }>;
 };
 
 type PricingSettings = {
@@ -100,8 +112,7 @@ const DEFAULT_LAB_SETTINGS: LabSettings = {
   defaultLanguage: "",
   directorName: "",
   accreditationBody: "",
-  consultantPathologist: "",
-  consultantQualification: "",
+  consultants: [],
 };
 
 const DEFAULT_PRICING_SETTINGS: PricingSettings = {
@@ -144,6 +155,45 @@ const Settings = () => {
   const fileRef = React.useRef<HTMLInputElement>(null);
   const logoInputRef = React.useRef<HTMLInputElement>(null);
 
+  const [consultantsOpen, setConsultantsOpen] = useState(false);
+  const [newConsultantName, setNewConsultantName] = useState('');
+  const [newConsultantQualifications, setNewConsultantQualifications] = useState('');
+  const [newConsultantCategory, setNewConsultantCategory] = useState('');
+
+  const addConsultant = () => {
+    if (!modulePerm.edit) {
+      toast({ title: 'Not allowed', description: 'You only have view permission for Settings.', variant: 'destructive' });
+      return;
+    }
+    const name = newConsultantName.trim();
+    const qualifications = newConsultantQualifications.trim();
+    const category = newConsultantCategory.trim();
+    if (!name) {
+      toast({ title: 'Missing name', description: 'Please enter consultant name.', variant: 'destructive' });
+      return;
+    }
+    const current = Array.isArray(labSettings.consultants) ? labSettings.consultants : [];
+    setLabSettings({
+      ...labSettings,
+      consultants: [...current, { name, qualifications, category }],
+    });
+    setNewConsultantName('');
+    setNewConsultantQualifications('');
+    setNewConsultantCategory('');
+  };
+
+  const removeConsultant = (idx: number) => {
+    if (!modulePerm.edit) {
+      toast({ title: 'Not allowed', description: 'You only have view permission for Settings.', variant: 'destructive' });
+      return;
+    }
+    const current = Array.isArray(labSettings.consultants) ? labSettings.consultants : [];
+    setLabSettings({
+      ...labSettings,
+      consultants: current.filter((_, i) => i !== idx),
+    });
+  };
+
   // Lab Logo state (used in receipts)
   const [logoUrl, setLogoUrl] = useState<string>('');
 
@@ -161,14 +211,12 @@ const Settings = () => {
     reader.onload = () => {
       const dataUrl = reader.result as string;
       setLogoUrl(dataUrl);
-      // Immediately reflect logo change in global settings so headers/update live
+      // Immediately reflect logo change in global settings
       const subtitleFromAcc = (labSettings.accreditationBody || '').trim();
       setSettings({
         hospitalName: labSettings.labName || 'Hospital Name',
         labLogoUrl: dataUrl,
         labSubtitle: subtitleFromAcc || null,
-        consultantPathologist: (labSettings.consultantPathologist && String(labSettings.consultantPathologist)) || '',
-        consultantQualification: (labSettings.consultantQualification && String(labSettings.consultantQualification)) || '',
       });
       toast({ title: 'Logo updated', description: 'This logo will appear on receipts.' });
     };
@@ -320,7 +368,7 @@ const Settings = () => {
           setLogoUrl(lab.logoUrl);
         }
 
-        // Persist key lab settings locally so other screens can read them immediately
+        // Persist key lab settings locally so other components can read them immediately
         try {
           localStorage.setItem('labSettings', JSON.stringify(lab));
           if (lab.labName) localStorage.setItem('labName', lab.labName);
@@ -339,17 +387,10 @@ const Settings = () => {
         }
 
         // Update global SettingsContext so any open pages react immediately
-        const labAny: any = lab;
-        const subtitleText =
-          (labAny?.accreditationBody && String(labAny.accreditationBody).trim()) ||
-          (labAny?.accreditationText && String(labAny.accreditationText).trim()) ||
-          null;
         setSettings({
           hospitalName: lab.labName || 'Hospital Name',
           labLogoUrl: lab.logoUrl || null,
-          labSubtitle: subtitleText,
-          consultantPathologist: (labAny?.consultantPathologist && String(labAny.consultantPathologist)) || '',
-          consultantQualification: (labAny?.consultantQualification && String(labAny.consultantQualification)) || '',
+          labSubtitle: (lab.accreditationBody && String(lab.accreditationBody).trim()) || null,
         });
       } catch (err) {
         console.error('Failed to load settings', err);
@@ -404,8 +445,6 @@ const Settings = () => {
           hospitalName: labToStore.labName || 'Hospital Name',
           labLogoUrl: labToStore.logoUrl || null,
           labSubtitle: subtitleText,
-          consultantPathologist: (labAny?.consultantPathologist && String(labAny.consultantPathologist)) || '',
-          consultantQualification: (labAny?.consultantQualification && String(labAny.consultantQualification)) || '',
         });
       } catch {
         // ignore storage errors
@@ -498,8 +537,6 @@ const Settings = () => {
                       hospitalName: value || 'Hospital Name',
                       labLogoUrl: logoUrl || null,
                       labSubtitle: subtitleFromAcc || null,
-                      consultantPathologist: (nextLab.consultantPathologist && String(nextLab.consultantPathologist)) || '',
-                      consultantQualification: (nextLab.consultantQualification && String(nextLab.consultantQualification)) || '',
                     });
                   }}
                 />
@@ -574,25 +611,17 @@ const Settings = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="consultantPathologist">Consultant Pathologist</Label>
-                  <Input
-                    id="consultantPathologist"
-                    value={labSettings.consultantPathologist || ''}
-                    onChange={(e) => setLabSettings({ ...labSettings, consultantPathologist: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="consultantQualification">Qualification</Label>
-                  <Input
-                    id="consultantQualification"
-                    value={labSettings.consultantQualification || ''}
-                    onChange={(e) => setLabSettings({ ...labSettings, consultantQualification: e.target.value })}
-                  />
+              <div className="space-y-2">
+                <Label>Consultants</Label>
+                <div className="flex items-center justify-between gap-4">
+                  <div className="text-sm text-muted-foreground">
+                    {(Array.isArray(labSettings.consultants) ? labSettings.consultants.length : 0)} consultant(s)
+                  </div>
+                  <Button type="button" variant="outline" disabled={!modulePerm.edit} onClick={() => setConsultantsOpen(true)}>
+                    Manage Consultants
+                  </Button>
                 </div>
               </div>
-
 
               {/* Lab Logo upload */}
               <div className="space-y-2">
@@ -619,6 +648,108 @@ const Settings = () => {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <Dialog open={consultantsOpen} onOpenChange={setConsultantsOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Add Consultants</DialogTitle>
+              <DialogDescription>Add multiple consultants for report sign-off (saved in database).</DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-3 md:items-end">
+                <div className="space-y-1">
+                  <Label htmlFor="consultantName">Name</Label>
+                  <div className="flex h-10 w-full items-center rounded-md border border-input bg-background px-3 py-2 text-sm">
+                    <span className="text-muted-foreground">Dr.&nbsp;</span>
+                    <input
+                      id="consultantName"
+                      value={newConsultantName}
+                      onChange={(e) => setNewConsultantName(e.target.value)}
+                      disabled={!modulePerm.edit}
+                      className="w-full bg-transparent outline-none"
+                      placeholder="Full name"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="consultantQualifications">Qualifications</Label>
+                  <Input
+                    id="consultantQualifications"
+                    value={newConsultantQualifications}
+                    onChange={(e) => setNewConsultantQualifications(e.target.value)}
+                    disabled={!modulePerm.edit}
+                    placeholder="e.g. FCPS, MPhil"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="consultantCategory">Category</Label>
+                  <Input
+                    id="consultantCategory"
+                    value={newConsultantCategory}
+                    onChange={(e) => setNewConsultantCategory(e.target.value)}
+                    disabled={!modulePerm.edit}
+                    placeholder="e.g. Consultant Pathologist"
+                  />
+                </div>
+                <div className="md:col-span-3 flex justify-end">
+                  <Button type="button" onClick={addConsultant} disabled={!modulePerm.edit}>
+                    Add
+                  </Button>
+                </div>
+              </div>
+
+              <div className="border rounded-md overflow-hidden">
+                <div className="max-h-56 overflow-auto">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 text-left text-gray-600">
+                        <th className="px-3 py-2 border-b">Name</th>
+                        <th className="px-3 py-2 border-b">Qualifications</th>
+                        <th className="px-3 py-2 border-b">Category</th>
+                        <th className="px-3 py-2 border-b text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(Array.isArray(labSettings.consultants) ? labSettings.consultants : []).map((c, idx) => (
+                        <tr key={`${c.name}-${idx}`} className="hover:bg-gray-50">
+                          <td className="px-3 py-2 border-b">{c.name}</td>
+                          <td className="px-3 py-2 border-b">{c.qualifications}</td>
+                          <td className="px-3 py-2 border-b">{c.category}</td>
+                          <td className="px-3 py-2 border-b text-right">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeConsultant(idx)}
+                              disabled={!modulePerm.edit}
+                              className="text-red-600 hover:text-red-700"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                      {(Array.isArray(labSettings.consultants) ? labSettings.consultants.length : 0) === 0 && (
+                        <tr>
+                          <td colSpan={4} className="px-3 py-6 text-center text-gray-500">
+                            No consultants added yet.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setConsultantsOpen(false)}>
+                Close
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <TabsContent value="pricing">
           <Card>
