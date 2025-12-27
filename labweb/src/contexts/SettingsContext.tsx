@@ -5,8 +5,6 @@ export type SettingsState = {
   hospitalName: string;
   labLogoUrl?: string | null;
   labSubtitle?: string | null;
-  consultantPathologist?: string;
-  consultantQualification?: string;
 };
 
 const STORAGE_KEY = 'app_settings';
@@ -16,7 +14,7 @@ function loadSettings(): SettingsState {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) return JSON.parse(raw) as SettingsState;
   } catch {}
-  return { hospitalName: 'Hospital Name', labLogoUrl: null, labSubtitle: null, consultantPathologist: '', consultantQualification: '' };
+  return { hospitalName: 'Hospital Name', labLogoUrl: null, labSubtitle: null };
 }
 
 function saveSettings(next: SettingsState) {
@@ -29,7 +27,7 @@ export const SettingsContext = React.createContext<{
   settings: SettingsState;
   setSettings: (s: SettingsState) => void;
 }>({
-  settings: { hospitalName: 'Hospital Name', labLogoUrl: null, labSubtitle: null, consultantPathologist: '', consultantQualification: '' },
+  settings: { hospitalName: 'Hospital Name', labLogoUrl: null, labSubtitle: null },
   setSettings: () => {},
 });
 
@@ -60,8 +58,6 @@ export const SettingsProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           hospitalName: lab.labName || settings.hospitalName || 'Hospital Name',
           labLogoUrl: lab.logoUrl ?? settings.labLogoUrl ?? null,
           labSubtitle: subtitleText ?? settings.labSubtitle ?? null,
-          consultantPathologist: (labAny?.consultantPathologist && String(labAny.consultantPathologist)) || '',
-          consultantQualification: (labAny?.consultantQualification && String(labAny.consultantQualification)) || '',
         });
       } catch (err) {
         // If backend settings fail to load, we keep whatever was in localStorage/defaults

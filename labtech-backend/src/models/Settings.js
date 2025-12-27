@@ -14,8 +14,13 @@ const settingsSchema = new mongoose.Schema(
       defaultLanguage: { type: String, default: '' },
       directorName: { type: String, default: '' },
       accreditationBody: { type: String, default: '' },
-      consultantPathologist: { type: String, default: '' },
-      consultantQualification: { type: String, default: '' },
+      consultants: [
+        {
+          name: { type: String, default: '' },
+          qualifications: { type: String, default: '' },
+          category: { type: String, default: '' },
+        },
+      ],
       logoUrl: { type: String, default: '' },
     },
     pricing: {

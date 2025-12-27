@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Text, Table, StickyNote, User, Stethoscope } from 'lucide-react';
+import { Text, Table, StickyNote, User, Stethoscope, Activity } from 'lucide-react';
 import { useSettings } from '@/contexts/SettingsContext';
 import { api } from '@/lab lib/api';
 import { useToast } from '@/hooks/use-toast';
@@ -43,7 +43,7 @@ function getModulePermission(moduleName: string): { view: boolean; edit: boolean
   }
 }
 
-type ComponentType = 'patient-info' | 'doctor-info' | 'result-table' | 'logo' | 'header-text' | 'notes' | 'consultant-section';
+type ComponentType = 'patient-info' | 'doctor-info' | 'result-table' | 'logo' | 'header-text' | 'notes' | 'consultant-section' | 'signature' | 'analyte-summary';
 
 interface LogoData {
   imageUrl: string;
@@ -78,6 +78,7 @@ function getLabContactFromStorage() {
 const components: ComponentItem[] = [
   { id: '5', type: 'header-text', label: 'Header Text', icon: <Text className="h-4 w-4" /> },
   { id: '1', type: 'patient-info', label: 'Patient Info Block', icon: <User className="h-4 w-4" /> },
+  { id: '8', type: 'analyte-summary', label: 'Analyte Summary', icon: <Activity className="h-4 w-4" /> },
   { id: '3', type: 'result-table', label: 'Result Table', icon: <Table className="h-4 w-4" /> },
   { id: '6', type: 'notes', label: 'Interpretation Section', icon: <StickyNote className="h-4 w-4" /> },
   { id: '7', type: 'consultant-section', label: 'Consultant Section', icon: <Stethoscope className="h-4 w-4" /> },
@@ -92,8 +93,6 @@ export function ReportDesigner() {
   const derivedLabLogoUrl = settings.labLogoUrl || null;
   // Only the part after "Accredited by" is stored; we render the prefix in JSX
   const derivedLabSubtitle = settings.labSubtitle || 'ISO 15189:2012';
-  const derivedConsultantPathologist = (settings as any).consultantPathologist || '';
-  const derivedConsultantQualification = (settings as any).consultantQualification || '';
   const labContact = getLabContactFromStorage();
 
   const [activeTab, setActiveTab] = useState('style');
@@ -108,10 +107,8 @@ export function ReportDesigner() {
       label: 'Header',
       icon: <Text className="h-4 w-4" />,
       data: {
-        title: 'PATHOLOGY REPORT',
-        subtitle: 'Dr. Lab Diagnostic Center',
-        address: '123 Medical Drive, Health City, HC 12345',
-        contact: 'Phone: (555) 123-4567 | Email: info@drlab.com'
+        title: '',
+        subtitle: '',
       }
     },
     {
@@ -137,6 +134,22 @@ export function ReportDesigner() {
         collectedSample: '',
         department: ''
       }
+    },
+    {
+      id: 'analyte-1',
+      type: 'analyte-summary',
+      label: 'Analyte Summary',
+      icon: <Activity className="h-4 w-4" />,
+      data: {
+        analyteName: 'Serum Total Cholesterol',
+        analyteUnit: 'mg/dL',
+        analyteValue: 212,
+        analyteStatus: '',
+        analyteNote: 'Cholesterol is essential substance for human body at normal levels.',
+        rangeLowMax: 200,
+        rangeNormalMax: 240,
+        rangeHighMax: 300,
+      },
     },
     {
       id: 'result-table-1',
@@ -174,7 +187,9 @@ export function ReportDesigner() {
         const template = data.reportTemplate;
         if (template && Array.isArray(template.components)) {
           setReportComponents(
-            (template.components as ComponentItem[]).filter((c) => c?.type !== 'signature')
+            (template.components as Array<ComponentItem | null | undefined>).filter(
+              (c): c is ComponentItem => !!c && c.type !== 'signature'
+            )
           );
         }
         if (template?.styles) {
@@ -351,41 +366,223 @@ export function ReportDesigner() {
       case 'patient-info':
         return (
           <div
-            className="border-b border-gray-200 pb-4 mb-4"
+            className="pb-2 mb-4"
             style={{
               borderStyle: borderStyle === 'none' ? 'none' : borderStyle,
               fontSize: componentFontSize ? `${componentFontSize}px` : undefined,
             }}
           >
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-4 gap-4">
               <div className="space-y-1">
-                <p><span className="font-medium">Patient Name:</span> <span className="font-normal">{component.data?.name || 'N/A'}</span></p>
-                <p><span className="font-medium">Age/Gender:</span> <span className="font-normal">{(component.data?.age || 'N/A')}/{component.data?.gender || 'N/A'}</span></p>
-                <p><span className="font-medium">Phone:</span> <span className="font-normal">{component.data?.phone || 'N/A'}</span></p>
-                <p><span className="font-medium">Address:</span> <span className="font-normal">{component.data?.address || 'N/A'}</span></p>
+                <div>
+                  <div className="text-[10px] font-normal text-gray-500">Patient:</div>
+                  <div className="text-[12px] font-bold text-gray-900">{component.data?.patientName || component.data?.name || 'N/A'}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] font-normal text-gray-500">Age/Sex:</div>
+                  <div className="text-[12px] font-bold text-gray-900">
+                    {(component.data?.age ?? 'N/A')}/{component.data?.gender || component.data?.sex || 'N/A'}
+                  </div>
+                </div>
               </div>
+
               <div className="space-y-1">
-                <p><span className="font-medium">Sample ID:</span> <span className="font-normal">{component.data?.sampleId || 'N/A'}</span></p>
-                <p><span className="font-medium">Collection Date:</span> <span className="font-normal">{component.data?.collectionDate || 'N/A'}</span></p>
-                <p><span className="font-medium">Report Date:</span> <span className="font-normal">{component.data?.reportDate || 'N/A'}</span></p>
+                <div>
+                  <div className="text-[10px] font-normal text-gray-500">Phone:</div>
+                  <div className="text-[12px] font-bold text-gray-900">{component.data?.phone || 'N/A'}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] font-normal text-gray-500">CNIC:</div>
+                  <div className="text-[12px] font-bold text-gray-900">{component.data?.cnic || 'N/A'}</div>
+                </div>
               </div>
+
               <div className="space-y-1">
-                <p><span className="font-medium">Ref Doctor:</span> <span className="font-normal">{component.data?.referringDoctor || component.data?.referringPhysician || 'N/A'}</span></p>
-                <p><span className="font-medium">Collected By:</span> <span className="font-normal">{component.data?.sampleCollectedBy || 'N/A'}</span></p>
-                <p><span className="font-medium">Sample:</span> <span className="font-normal">{component.data?.collectedSample || 'N/A'}</span></p>
-                <p><span className="font-medium">Department:</span> <span className="font-normal">{component.data?.department || 'Pathology'}</span></p>
+                <div>
+                  <div className="text-[10px] font-normal text-gray-500">Collected by:</div>
+                  <div className="text-[12px] font-bold text-gray-900">{component.data?.sampleCollectedBy || component.data?.collectedBy || 'N/A'}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] font-normal text-gray-500">Collection DateTime:</div>
+                  <div className="text-[12px] font-bold text-gray-900">
+                    {component.data?.collectionDateTime || component.data?.collectionDate || component.data?.receivedAt || 'N/A'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <div>
+                  <div className="text-[10px] font-normal text-gray-500">Patient Number:</div>
+                  <div className="text-[12px] font-bold text-gray-900">
+                    {component.data?.patientNumber || component.data?.patientId || component.data?.mrNumber || 'N/A'}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] font-normal text-gray-500">Case Number:</div>
+                  <div className="text-[12px] font-bold text-gray-900">{component.data?.caseNumber || component.data?.sampleId || 'N/A'}</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-b border-gray-900" />
+
+            <div className="py-2 flex items-center justify-between gap-4">
+              <div className="text-[17px] font-bold text-black">Department of Chemical Pathology</div>
+              <div className="text-right">
+                <div className="text-[12px] text-gray-900">
+                  <span className="font-bold">Collection DateTime:</span>{' '}
+                  {component.data?.collectionDateTime || component.data?.collectionDate || component.data?.receivedAt || 'N/A'}
+                </div>
+                <div className="text-[12px] text-gray-900">
+                  <span className="font-bold">Reporting DateTime:</span>{' '}
+                  {component.data?.reportingDateTime || component.data?.reportDate || component.data?.completedAt || 'N/A'}
+                </div>
+              </div>
+            </div>
+
+            <div className="border-b border-gray-900" />
+          </div>
+        );
+      case 'analyte-summary': {
+        const analyteName = component.data?.analyteName || component.data?.parameterName || component.data?.currentTestName || 'Serum Total Cholesterol';
+        const analyteUnit = component.data?.analyteUnit || component.data?.unit || 'mg/dL';
+        const rawValue = component.data?.analyteValue ?? component.data?.value ?? 212;
+        const analyteValueNum = Number(rawValue);
+
+        const lowMax = Number(component.data?.rangeLowMax ?? 200);
+        const normalMax = Number(component.data?.rangeNormalMax ?? 240);
+        const highMax = Number(component.data?.rangeHighMax ?? 300);
+
+        const statusText = component.data?.analyteStatus || (
+          !isNaN(analyteValueNum)
+            ? (analyteValueNum < lowMax ? 'Desirable' : (analyteValueNum <= normalMax ? 'Borderline High' : 'High'))
+            : 'N/A'
+        );
+
+        const chartMin = Number(component.data?.chartMin ?? (lowMax - 20));
+        const chartMax = Number(component.data?.chartMax ?? (normalMax + 20));
+        const clampedY = !isNaN(analyteValueNum)
+          ? Math.min(chartMax, Math.max(chartMin, analyteValueNum))
+          : chartMin;
+        const markerYPct = chartMax === chartMin
+          ? 0
+          : (1 - ((clampedY - chartMin) / (chartMax - chartMin))) * 100;
+
+        const gridStep = Number(component.data?.chartGridStep ?? 10);
+        const labelStep = Number(component.data?.chartLabelStep ?? 20);
+
+        const gridTicks: number[] = [];
+        for (let t = chartMax; t >= chartMin; t -= gridStep) {
+          gridTicks.push(t);
+        }
+        if (!gridTicks.includes(lowMax) && lowMax <= chartMax && lowMax >= chartMin) gridTicks.push(lowMax);
+        if (!gridTicks.includes(normalMax) && normalMax <= chartMax && normalMax >= chartMin) gridTicks.push(normalMax);
+        gridTicks.sort((a, b) => b - a);
+
+        const labelTicks: number[] = [];
+        for (let t = chartMax; t >= chartMin; t -= labelStep) {
+          labelTicks.push(t);
+        }
+        if (!labelTicks.includes(lowMax) && lowMax <= chartMax && lowMax >= chartMin) labelTicks.push(lowMax);
+        if (!labelTicks.includes(normalMax) && normalMax <= chartMax && normalMax >= chartMin) labelTicks.push(normalMax);
+        labelTicks.sort((a, b) => b - a);
+
+        return (
+          <div
+            className="pt-4"
+            style={{
+              borderStyle: borderStyle === 'none' ? 'none' : borderStyle,
+              fontSize: componentFontSize ? `${componentFontSize}px` : undefined,
+            }}
+          >
+            <div className="grid grid-cols-12 gap-4 items-start">
+              <div className="col-span-12 md:col-span-4">
+                <div className="text-[14px] font-semibold text-gray-900">{analyteName}</div>
+                <div className="text-[10px] text-gray-500 mt-1">
+                  {component.data?.analyteNote || 'Cholesterol is essential substance for human body at normal levels.'}
+                </div>
+              </div>
+
+              <div className="col-span-12 md:col-span-5">
+                <div className="mt-2 flex items-start gap-3">
+                  <div className="relative w-9 h-[90px] text-right text-[9px] text-gray-500 leading-none">
+                    {labelTicks.map((t) => {
+                      const topPct = chartMax === chartMin
+                        ? 0
+                        : (1 - ((t - chartMin) / (chartMax - chartMin))) * 100;
+                      return (
+                        <div
+                          key={t}
+                          className="absolute right-0"
+                          style={{ top: `${topPct}%`, transform: 'translateY(-50%)' }}
+                        >
+                          {t}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="relative flex-1 h-[90px] border border-gray-400">
+                    {gridTicks.map((t, idx) => {
+                      const isLowBoundary = t === lowMax;
+                      const isHighBoundary = t === normalMax;
+                      const bandColor = t > normalMax ? '#dc2626' : t >= lowMax ? '#f59e0b' : '#2563eb';
+                      const lineColor = isLowBoundary ? '#2563eb' : isHighBoundary ? '#dc2626' : bandColor;
+                      const lineWidth = isLowBoundary || isHighBoundary ? 2 : 1;
+                      const topPct = chartMax === chartMin
+                        ? 0
+                        : (1 - ((t - chartMin) / (chartMax - chartMin))) * 100;
+                      return (
+                        <div
+                          key={`${t}-${idx}`}
+                          className="absolute left-0 right-0"
+                          style={{
+                            top: `${topPct}%`,
+                            borderTop: `${lineWidth}px solid ${lineColor}`,
+                            opacity: isLowBoundary || isHighBoundary ? 1 : 0.35,
+                          }}
+                        />
+                      );
+                    })}
+
+                    <div
+                      className="absolute left-1/2 -translate-x-1/2"
+                      style={{ top: `${markerYPct}%`, transform: 'translate(-50%, -50%)' }}
+                    >
+                      <div className="text-[9px] font-bold bg-orange-500 text-white px-1 py-[1px] leading-none">
+                        {!isNaN(analyteValueNum) ? analyteValueNum : String(rawValue || 'N/A')}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-nowrap justify-center gap-4 mt-3 text-[10px] font-semibold whitespace-nowrap">
+                  <div className="flex items-center gap-1">
+                    <span className="inline-block w-3 h-3" style={{ backgroundColor: '#2563eb' }} />
+                    <span className="text-gray-700">Desirable (&lt;{lowMax})</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="inline-block w-3 h-3" style={{ backgroundColor: '#f59e0b' }} />
+                    <span className="text-gray-700">Borderline High ({lowMax} - {normalMax})</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="inline-block w-3 h-3" style={{ backgroundColor: '#dc2626' }} />
+                    <span className="text-gray-700">High (&gt;{normalMax})</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="col-span-12 md:col-span-3 flex flex-col items-end">
+                <div className="text-[42px] leading-none font-extrabold text-orange-500">
+                  {!isNaN(analyteValueNum) ? analyteValueNum : String(rawValue || 'N/A')}
+                </div>
+                <div className="text-[12px] font-bold text-gray-700 mt-1">{analyteUnit}</div>
+                <div className="text-[14px] font-semibold text-orange-600 mt-1">{statusText}</div>
               </div>
             </div>
           </div>
         );
-      case 'doctor-info':
-        return (
-          <div className="p-4 border rounded-lg bg-white">
-            <h3 className="font-semibold mb-2">Referring Physician</h3>
-            <div>{component.data?.referringPhysician || 'N/A'}</div>
-            <div className="text-sm text-gray-500">Cardiology</div>
-          </div>
-        );
+      }
       case 'result-table':
         return (
           <div
@@ -466,42 +663,35 @@ export function ReportDesigner() {
         );
       case 'header-text':
         return (
-          <div className="w-full">
-            <div
-              className="bg-white text-gray-900 p-4 border-b border-gray-300"
-              style={{
-                borderStyle: borderStyle === 'none' ? 'none' : borderStyle,
-                fontSize: componentFontSize ? `${componentFontSize}px` : undefined,
-              }}
-            >
-              <div className="flex justify-between items-center gap-4">
-                <div className="w-16 h-16 bg-white flex items-center justify-center rounded overflow-hidden">
-                  {derivedLabLogoUrl ? (
-                    <img
-                      src={derivedLabLogoUrl}
-                      alt="Lab Logo"
-                      className="w-full h-full object-contain"
-                    />
-                  ) : (
-                    <span className="text-blue-700 text-xs font-bold">Lab Logo</span>
-                  )}
-                </div>
-                <div className="text-center flex-1">
-                  <h1 className="text-xl font-bold uppercase">{derivedLabName}</h1>
-                  <p className="text-sm font-medium text-gray-600">Accredited by {derivedLabSubtitle}</p>
-                </div>
-                <div className="w-16" />
+          <div
+            className="w-full pl-0 pr-2 py-2"
+            style={{
+              borderStyle: borderStyle === 'none' ? 'none' : borderStyle,
+              fontSize: componentFontSize ? `${componentFontSize}px` : undefined,
+            }}
+          >
+            <div className="flex items-center gap-2">
+              <div className="w-14 h-14 bg-white flex items-center justify-center rounded overflow-hidden">
+                {derivedLabLogoUrl ? (
+                  <img
+                    src={derivedLabLogoUrl}
+                    alt="Logo"
+                    className="w-full h-full object-contain"
+                  />
+                ) : (
+                  <div className="w-full h-full border-2 border-dashed border-gray-300 rounded flex items-center justify-center text-gray-400 text-[10px] text-center p-1">
+                    <span>Logo</span>
+                  </div>
+                )}
               </div>
-              <div className="mt-3 text-xs text-gray-700 flex flex-wrap gap-x-6 gap-y-1 justify-center">
-                <span>
-                  <span className="font-semibold">Phone:</span> {labContact.phone || 'N/A'}
-                </span>
-                <span>
-                  <span className="font-semibold">Email:</span> {labContact.email || 'N/A'}
-                </span>
-                <span>
-                  <span className="font-semibold">Address:</span> {labContact.address || 'N/A'}
-                </span>
+
+              <div className="flex-1">
+                <div className="text-[18px] font-bold leading-tight text-gray-900">
+                  {derivedLabName}
+                </div>
+                <div className="text-[12px] font-semibold leading-tight text-gray-700">
+                  {derivedLabSubtitle}
+                </div>
               </div>
             </div>
           </div>
@@ -529,10 +719,10 @@ export function ReportDesigner() {
             >
               <div className="space-y-1">
                 <div>
-                  <div className="text-gray-900 font-normal">{derivedConsultantPathologist}</div>
+                  <div className="text-gray-900 font-normal">{component.data?.consultantPathologist || ''}</div>
                 </div>
                 <div>
-                  <div className="text-gray-900 font-normal">{derivedConsultantQualification}</div>
+                  <div className="text-gray-900 font-normal">{component.data?.qualification || component.data?.consultantQualification || ''}</div>
                 </div>
                 <div>
                   <span className="font-semibold">Consultant Pathologist</span>

@@ -17,6 +17,15 @@ import { useSettings } from "@/contexts/SettingsContext";
 import { printHtmlOverlay } from "@/utils/printOverlay";
 import { useToast } from "@/hooks/use-toast";
 
+function escapeHtml(s: any) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 function splitCommaOutsideParens(input: string): string[] {
   const out: string[] = [];
   let buf = '';
@@ -103,8 +112,6 @@ function buildHtmlFromTemplate(
     labSubtitle: string;
     labLogoUrl: string | null;
     labContact: { phone: string; email: string; address: string };
-    consultantPathologist?: string;
-    consultantQualification?: string;
   }
 ) {
   const fontSize = template?.styles?.fontSize || 12;
@@ -131,6 +138,112 @@ function buildHtmlFromTemplate(
       </div>
     </div>
   `;
+
+  const analyteSummaryHtmlFromComponent = (comp: any) => {
+    const analyteName = comp?.data?.analyteName || comp?.data?.parameterName || reportData?.currentTestName || 'Serum Total Cholesterol';
+    const analyteUnit = comp?.data?.analyteUnit || comp?.data?.unit || 'mg/dL';
+    const rawValue = (comp?.data?.analyteValue ?? comp?.data?.value ?? 212);
+    const analyteValueNum = Number(rawValue);
+
+    const lowMax = Number(comp?.data?.rangeLowMax ?? 200);
+    const normalMax = Number(comp?.data?.rangeNormalMax ?? 240);
+    const highMax = Number(comp?.data?.rangeHighMax ?? 300);
+
+    const statusText = comp?.data?.analyteStatus || (
+      !isNaN(analyteValueNum)
+        ? (analyteValueNum < lowMax ? 'Desirable' : (analyteValueNum <= normalMax ? 'Borderline High' : 'High'))
+        : 'N/A'
+    );
+
+    const chartMin = Number(comp?.data?.chartMin ?? (lowMax - 20));
+    const chartMax = Number(comp?.data?.chartMax ?? (normalMax + 20));
+    const clampedY = !isNaN(analyteValueNum)
+      ? Math.min(chartMax, Math.max(chartMin, analyteValueNum))
+      : chartMin;
+    const markerYPct = chartMax === chartMin
+      ? 0
+      : (1 - ((clampedY - chartMin) / (chartMax - chartMin))) * 100;
+
+    const gridStep = Number(comp?.data?.chartGridStep ?? 10);
+    const labelStep = Number(comp?.data?.chartLabelStep ?? 20);
+
+    const gridTicks: number[] = [];
+    for (let t = chartMax; t >= chartMin; t -= gridStep) {
+      gridTicks.push(t);
+    }
+    if (!gridTicks.includes(lowMax) && lowMax <= chartMax && lowMax >= chartMin) gridTicks.push(lowMax);
+    if (!gridTicks.includes(normalMax) && normalMax <= chartMax && normalMax >= chartMin) gridTicks.push(normalMax);
+    gridTicks.sort((a, b) => b - a);
+
+    const labelTicks: number[] = [];
+    for (let t = chartMax; t >= chartMin; t -= labelStep) {
+      labelTicks.push(t);
+    }
+    if (!labelTicks.includes(lowMax) && lowMax <= chartMax && lowMax >= chartMin) labelTicks.push(lowMax);
+    if (!labelTicks.includes(normalMax) && normalMax <= chartMax && normalMax >= chartMin) labelTicks.push(normalMax);
+    labelTicks.sort((a, b) => b - a);
+
+    const displayValue = !isNaN(analyteValueNum) ? String(analyteValueNum) : escapeHtml(rawValue || 'N/A');
+    const note = comp?.data?.analyteNote || '';
+
+    return `
+      <div style="padding-top:12px;">
+        <div style="display:grid;grid-template-columns: 1.2fr 1.6fr 0.8fr;gap:16px;align-items:flex-start;">
+          <div>
+            <div style="font-size:14px;font-weight:600;color:#111827;">${escapeHtml(analyteName)}</div>
+            ${note ? `<div style="margin-top:4px;font-size:10px;color:#6b7280;">${escapeHtml(note)}</div>` : ''}
+          </div>
+
+          <div>
+            <div style="display:flex;align-items:flex-start;gap:10px;margin-top:6px;">
+              <div style="position:relative;width:34px;height:90px;text-align:right;font-size:9px;color:#6b7280;line-height:1;">
+                ${labelTicks.map((t: number) => {
+                  const topPct = chartMax === chartMin ? 0 : (1 - ((t - chartMin) / (chartMax - chartMin))) * 100;
+                  return `<div style=\"position:absolute;right:0;top:${topPct}%;transform:translateY(-50%);\">${t}</div>`;
+                }).join('')}
+              </div>
+              <div style="position:relative;flex:1;height:90px;border:1px solid #9ca3af;">
+                ${gridTicks.map((t: number) => {
+                  const isLow = t === lowMax;
+                  const isHigh = t === normalMax;
+                  const bandColor = t > normalMax ? '#dc2626' : t >= lowMax ? '#f59e0b' : '#2563eb';
+                  const lineColor = isLow ? '#2563eb' : isHigh ? '#dc2626' : bandColor;
+                  const lineWidth = (isLow || isHigh) ? 2 : 1;
+                  const opacity = (isLow || isHigh) ? 1 : 0.35;
+                  const topPct = chartMax === chartMin ? 0 : (1 - ((t - chartMin) / (chartMax - chartMin))) * 100;
+                  return `<div style=\"position:absolute;left:0;right:0;top:${topPct}%;border-top:${lineWidth}px solid ${lineColor};opacity:${opacity};\"></div>`;
+                }).join('')}
+                <div style="position:absolute;left:50%;top:${markerYPct}%;transform:translate(-50%,-50%);">
+                  <div style="display:inline-block;font-size:9px;font-weight:700;background:#f97316;color:#fff;padding:1px 4px;line-height:1;">${escapeHtml(displayValue)}</div>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-wrap:nowrap;justify-content:center;gap:12px;margin-top:10px;font-size:10px;font-weight:600;color:#374151;white-space:nowrap;">
+              <div style="display:flex;align-items:center;gap:4px;">
+                <span style="display:inline-block;width:10px;height:10px;background:#2563eb;"></span>
+                <span>Desirable (&lt;${lowMax})</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:4px;">
+                <span style="display:inline-block;width:10px;height:10px;background:#f59e0b;"></span>
+                <span>Borderline High (${lowMax} - ${normalMax})</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:4px;">
+                <span style="display:inline-block;width:10px;height:10px;background:#dc2626;"></span>
+                <span>High (&gt;${normalMax})</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="text-align:right;">
+            <div style="font-size:42px;line-height:1;font-weight:800;color:#f97316;">${escapeHtml(displayValue)}</div>
+            <div style="margin-top:4px;font-size:12px;font-weight:700;color:#374151;">${escapeHtml(analyteUnit)}</div>
+            <div style="margin-top:4px;font-size:14px;font-weight:600;color:#ea580c;">${escapeHtml(statusText)}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  };
 
   const logoFromTemplate = template?.components?.find?.((c: any) => c?.type === 'logo')?.data;
   const logoUrl = logoFromTemplate?.imageUrl || options.labLogoUrl;
@@ -228,8 +341,8 @@ function buildHtmlFromTemplate(
     ? `
       <div style="display:flex;justify-content:flex-end;">
         <div style="text-align:right;font-size:11px;min-width:260px;max-width:320px;">
-          <div style="margin-bottom:2px;"><span style=\"font-weight:400;\">${consultantFromTemplate?.consultantPathologist || options.consultantPathologist || ''}</span></div>
-          <div style="margin-bottom:2px;"><span style=\"font-weight:400;\">${consultantFromTemplate?.qualification || options.consultantQualification || ''}</span></div>
+          <div style="margin-bottom:2px;"><span style=\"font-weight:400;\">${consultantFromTemplate?.consultantPathologist || ''}</span></div>
+          <div style="margin-bottom:2px;"><span style=\"font-weight:400;\">${consultantFromTemplate?.qualification || ''}</span></div>
           <div><span style=\"font-weight:600;\">Consultant Pathologist</span></div>
         </div>
       </div>
@@ -263,6 +376,9 @@ function buildHtmlFromTemplate(
         break;
       case "notes":
         pieces.push(interpretationHtml);
+        break;
+      case "analyte-summary":
+        pieces.push(analyteSummaryHtmlFromComponent(comp));
         break;
       case "consultant-section":
         break;
@@ -342,8 +458,6 @@ const ReportGenerator = () => {
   const derivedLabName = settings.hospitalName || "Medical Laboratory Report";
   const derivedLabLogoUrl = settings.labLogoUrl || null;
   const derivedLabSubtitle = settings.labSubtitle || "ISO 15189:2012";
-  const derivedConsultantPathologist = (settings as any).consultantPathologist || '';
-  const derivedConsultantQualification = (settings as any).consultantQualification || '';
 
   // Fetch completed samples to display as reports
   const [reports, setReports] = useState<TestReport[]>([]);
@@ -620,8 +734,6 @@ const ReportGenerator = () => {
           labSubtitle: derivedLabSubtitle,
           labLogoUrl: derivedLabLogoUrl,
           labContact,
-          consultantPathologist: derivedConsultantPathologist,
-          consultantQualification: derivedConsultantQualification,
         };
 
         // Generate one page per test (when prefixed parameterIds are found) for both View and Print
@@ -1408,15 +1520,6 @@ const ReportGenerator = () => {
       alert('Failed to generate report');
     }
   };
-
-  function escapeHtml(s: any){
-    return String(s ?? '')
-      .replace(/&/g,'&amp;')
-      .replace(/</g,'&lt;')
-      .replace(/>/g,'&gt;')
-      .replace(/"/g,'&quot;')
-      .replace(/'/g,'&#039;');
-  }
 
   const sendReport = (reportId: string) => {
     console.log(`Sending report ${reportId}`);
